@@ -7,4 +7,27 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    env_file:
+      - .env
+    environment:
+      - MONGO_DBNAME=${MONGO_DBNAME}
+      - MONGO_HOST=${MONGO_HOST}
+      - MONGO_PORT=${MONGO_PORT}
+      - MONGO_USER=${MONGO_USER}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - USERNAME=${USERNAME}
+      - EMAIL=${EMAIL}
+      - PASSWORD=${PASSWORD}
+    depends_on:
+      - mongodb
+  mongodb:
+    image: mongo:noble
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    volumes:
+      - mongo-data:/data/db
+volumes:
+  mongo-data:
 
