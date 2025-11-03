@@ -4,6 +4,9 @@ FROM python:3.11-slim
 # Set working directory in container
 WORKDIR /app
 
+# Use Chinese mirror for faster downloads (or your local mirror)
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
 # Copy requirements first (for better caching)
 COPY requirements.txt .
 
