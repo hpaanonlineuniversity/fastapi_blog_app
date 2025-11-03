@@ -76,7 +76,7 @@ class AuthController:
             db_user = self.user_model.find_user_by_email(user_data.email)
             
             if db_user:
-                # User exists - login
+                # User exists - login (CONSISTENT with signin)
                 token = create_jwt_token(str(db_user["_id"]), db_user.get("isAdmin", False))
                 
                 user_response = UserResponse(
@@ -103,16 +103,18 @@ class AuthController:
                 
                 user_id = self.user_model.create_user(new_user_data)
                 
-                # Get the created user
+                # Get the created user FRESH from database
                 db_user = self.user_model.find_user_by_id(user_id)
-                token = create_jwt_token(user_id, False)
+                
+                # ✅ CONSISTENT with existing user flow
+                token = create_jwt_token(str(db_user["_id"]), db_user.get("isAdmin", False))
                 
                 user_response = UserResponse(
-                    id=user_id,
-                    username=username,
-                    email=user_data.email,
-                    profilePicture=user_data.googlePhotoUrl,
-                    isAdmin=False
+                    id=str(db_user["_id"]),
+                    username=db_user["username"],
+                    email=db_user["email"],
+                    profilePicture=db_user.get("profilePicture"),
+                    isAdmin=db_user.get("isAdmin", False)
                 )
             
             return {
