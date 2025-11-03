@@ -1,20 +1,9 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, EmailStr, validator
 from typing import Optional
-import re
 
 class UserBase(BaseModel):
     username: str
-    email: str  # EmailStr အစား str ပြောင်းသုံးမယ်
-    
-    @validator('email')
-    def email_validator(cls, v):
-        if not v:
-            raise ValueError('Email is required')
-        # Basic email validation
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        if not re.match(email_pattern, v):
-            raise ValueError('Invalid email format')
-        return v
+    email: EmailStr
 
 class UserCreate(UserBase):
     password: str
@@ -26,11 +15,11 @@ class UserCreate(UserBase):
         return v
 
 class UserLogin(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 class UserGoogle(BaseModel):
-    email: str
+    email: EmailStr
     name: str
     googlePhotoUrl: str
 
