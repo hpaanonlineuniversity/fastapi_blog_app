@@ -2,7 +2,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import auth_route, user_route, post_route 
+from .routes import auth_route, user_route, post_route, comment_route
 from .configs.database import get_database, db
 
 environment = os.getenv("ENVIRONMENT", "development")
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(auth_route.router, prefix="/api/auth")
 app.include_router(user_route.router, prefix="/api/user")
 app.include_router(post_route.router, prefix="/api/post")  
+app.include_router(comment_route.router, prefix="/api/comment")
 
 # Rest of the code remains the same...
 @app.get("/")

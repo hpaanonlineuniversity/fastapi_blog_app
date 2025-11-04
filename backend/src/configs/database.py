@@ -18,3 +18,7 @@ def get_user_collection():
 def get_post_collection():
     """Get posts collection"""
     return db["posts"]
+
+def get_comment_collection():
+    """Get comments collection"""
+    return db["comments"]
