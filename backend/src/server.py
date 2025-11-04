@@ -2,9 +2,8 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import auth_route, user_route, post_route  # ✅ Add post_route
-from .configs.database import get_database
-from .configs.database import get_database, db  # ✅ Add 'db' import here
+from .routes import auth_route, user_route, post_route 
+from .configs.database import get_database, db
 
 environment = os.getenv("ENVIRONMENT", "development")
 
@@ -43,13 +42,18 @@ async def root():
     return {"message": "Hello World from FastAPI!"}
 
 
+# server.py (updated startup event)
 @app.on_event("startup")
 async def startup_event():
     # Test database connection
     try:
-        # For AsyncIOMotorClient, use await
         await db.command("ping")
         print("✅ MongoDB connected successfully")
+        
+        # Create admin user after successful DB connection
+        from .utils.admin_setup import setup_admin_user
+        await setup_admin_user()
+        
     except Exception as e:
         print(f"❌ MongoDB connection failed: {e}")
         raise e
