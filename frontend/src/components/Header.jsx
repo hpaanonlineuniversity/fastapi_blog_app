@@ -30,7 +30,7 @@ const Header = () => {
 
   const handleSignOut = async () => {
     try {
-          const response = await fetch('/api/auth/logout', {
+          const response = await fetch('/api/user/signout', {
             method: 'POST',
             credentials: 'include'
           });
