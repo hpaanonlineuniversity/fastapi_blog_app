@@ -1,12 +1,12 @@
 # configs/database.py
-from pymongo import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from ..configs.config import MONGO_USER, MONGO_PASSWORD, MONGO_HOST, MONGO_PORT, MONGO_DBNAME
 
 MONGO_URL = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DBNAME}?authSource=admin"
 
-# ✅ Sync MongoDB client
-client = MongoClient(MONGO_URL)
+# ✅ Async MongoDB client
+client = AsyncIOMotorClient(MONGO_URL)
 db = client[MONGO_DBNAME]
 
 def get_database():

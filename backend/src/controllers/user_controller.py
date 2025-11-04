@@ -2,7 +2,7 @@
 from fastapi import HTTPException, status, Depends
 from ..models.user_model import UserModel
 from ..schemas.user_schema import UserUpdate, UserResponse, UsersResponse, UserUpdateAdmin
-from ..utils.security import hash_password, verify_password
+from ..utils.security import hash_password
 from ..utils.auth_dependency import get_current_user
 from datetime import datetime, timedelta
 
@@ -27,8 +27,8 @@ class UserController:
         
         # Validate and prepare update data
         if update_data.username:
-            # Check if username already exists
-            existing_user = self.user_model.find_user_by_username(update_data.username)
+            # Check if username already exists (using await now)
+            existing_user = await self.user_model.find_user_by_username(update_data.username)
             if existing_user and str(existing_user["_id"]) != user_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -37,8 +37,8 @@ class UserController:
             update_dict["username"] = update_data.username
         
         if update_data.email:
-            # Check if email already exists
-            existing_user = self.user_model.find_user_by_email(update_data.email)
+            # Check if email already exists (using await now)
+            existing_user = await self.user_model.find_user_by_email(update_data.email)
             if existing_user and str(existing_user["_id"]) != user_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -52,17 +52,17 @@ class UserController:
         if update_data.profilePicture:
             update_dict["profilePicture"] = update_data.profilePicture
         
-        # Update user in database
+        # Update user in database (using await now)
         if update_dict:
-            success = self.user_model.update_user(user_id, update_dict)
+            success = await self.user_model.update_user(user_id, update_dict)
             if not success:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="User not found"
                 )
         
-        # Get updated user
-        updated_user = self.user_model.find_user_by_id(user_id)
+        # Get updated user (using await now)
+        updated_user = await self.user_model.find_user_by_id(user_id)
         if not updated_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -86,7 +86,7 @@ class UserController:
                 detail="You are not allowed to delete this user"
             )
         
-        success = self.user_model.delete_user(user_id)
+        success = await self.user_model.delete_user(user_id)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -109,8 +109,8 @@ class UserController:
         
         sort_direction = 1 if sort == "asc" else -1
         
-        # Get users
-        users = self.user_model.get_all_users(
+        # Get users (using await now)
+        users = await self.user_model.get_all_users(
             skip=start_index, 
             limit=limit, 
             sort_direction=sort_direction
@@ -127,12 +127,12 @@ class UserController:
                 isAdmin=user.get("isAdmin", False)
             ))
         
-        # Get counts
-        total_users = self.user_model.count_users()
+        # Get counts (using await now)
+        total_users = await self.user_model.count_users()
         
         # Last month users count
         one_month_ago = datetime.now() - timedelta(days=30)
-        last_month_users = self.user_model.get_users_count_since_date(one_month_ago)
+        last_month_users = await self.user_model.get_users_count_since_date(one_month_ago)
         
         return UsersResponse(
             users=users_without_password,
@@ -142,7 +142,7 @@ class UserController:
 
     async def get_user(self, user_id: str):
         """Get user by ID"""
-        user = self.user_model.find_user_by_id(user_id)
+        user = await self.user_model.find_user_by_id(user_id)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -173,16 +173,16 @@ class UserController:
                 detail="You cannot change your own admin status"
             )
         
-        # Update admin status
-        success = self.user_model.update_user(user_id, {"isAdmin": admin_data.isAdmin})
+        # Update admin status (using await now)
+        success = await self.user_model.update_user(user_id, {"isAdmin": admin_data.isAdmin})
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
-        # Get updated user
-        updated_user = self.user_model.find_user_by_id(user_id)
+        # Get updated user (using await now)
+        updated_user = await self.user_model.find_user_by_id(user_id)
         return UserResponse(
             id=str(updated_user["_id"]),
             username=updated_user["username"],

@@ -12,7 +12,8 @@ class PostController:
 
     def _generate_slug(self, title: str) -> str:
         """Generate slug from title"""
-        slug = title.split(' ').join('-').lower()
+        # Fix: Python string operations are different from JavaScript
+        slug = title.replace(' ', '-').lower()
         slug = re.sub(r'[^a-zA-Z0-9-]', '', slug)
         return slug
 
@@ -32,12 +33,20 @@ class PostController:
                 detail="Please provide all required fields"
             )
         
+        # Check if title already exists
+        existing_post_by_title = await self.post_model.find_post_by_title(post_data.title)
+        if existing_post_by_title:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Post title already exists"
+            )
+        
         # Generate slug
         slug = self._generate_slug(post_data.title)
         
         # Check if slug already exists and make it unique
-        existing_post = await self.post_model.find_post_by_slug(slug)
-        if existing_post:
+        existing_post_by_slug = await self.post_model.find_post_by_slug(slug)
+        if existing_post_by_slug:
             slug = f"{slug}-{int(datetime.now().timestamp())}"
         
         # Create post data
@@ -45,8 +54,8 @@ class PostController:
             "userId": current_user["id"],
             "title": post_data.title,
             "content": post_data.content,
-            "image": post_data.image,
-            "category": post_data.category,
+            "image": post_data.image or "https://www.hostinger.com/tutorials/wp-content/uploads/sites/2/2021/09/how-to-write-a-blog-post.png",
+            "category": post_data.category or "uncategorized",
             "slug": slug
         }
         
@@ -98,7 +107,13 @@ class PostController:
             query["slug"] = slug
         
         if postId:
-            query["_id"] = postId
+            try:
+                query["_id"] = ObjectId(postId)
+            except:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid post ID"
+                )
         
         if searchTerm:
             query["$or"] = [
@@ -164,6 +179,13 @@ class PostController:
                 detail="Post not found"
             )
         
+        # Verify post belongs to user (if not admin)
+        if not current_user["isAdmin"] and post["userId"] != current_user["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not allowed to delete this post"
+            )
+        
         # Delete post
         success = await self.post_model.delete_post(post_id)
         if not success:
@@ -197,10 +219,33 @@ class PostController:
                 detail="Post not found"
             )
         
+        # Verify post belongs to user (if not admin)
+        if not current_user["isAdmin"] and post["userId"] != current_user["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not allowed to update this post"
+            )
+        
         # Prepare update data
         update_dict = {}
         if update_data.title is not None:
+            # Check if new title already exists (excluding current post)
+            existing_post = await self.post_model.find_post_by_title(update_data.title)
+            if existing_post and str(existing_post["_id"]) != post_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Post title already exists"
+                )
             update_dict["title"] = update_data.title
+            
+            # Generate new slug if title changed
+            if update_data.title != post["title"]:
+                new_slug = self._generate_slug(update_data.title)
+                existing_post_by_slug = await self.post_model.find_post_by_slug(new_slug)
+                if existing_post_by_slug and str(existing_post_by_slug["_id"]) != post_id:
+                    new_slug = f"{new_slug}-{int(datetime.now().timestamp())}"
+                update_dict["slug"] = new_slug
+        
         if update_data.content is not None:
             update_dict["content"] = update_data.content
         if update_data.category is not None:
@@ -209,12 +254,13 @@ class PostController:
             update_dict["image"] = update_data.image
         
         # Update post
-        success = await self.post_model.update_post(post_id, update_dict)
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update post"
-            )
+        if update_dict:  # Only update if there are changes
+            success = await self.post_model.update_post(post_id, update_dict)
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update post"
+                )
         
         # Get updated post
         updated_post = await self.post_model.find_post_by_id(post_id)

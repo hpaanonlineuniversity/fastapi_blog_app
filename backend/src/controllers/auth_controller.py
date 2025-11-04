@@ -1,7 +1,8 @@
+# controllers/auth_controller.py
+from fastapi import HTTPException, status
 from ..models.user_model import UserModel
 from ..schemas.user_schema import UserCreate, UserLogin, UserGoogle, UserResponse
 from ..utils.security import hash_password, verify_password, create_jwt_token
-from ..utils.error_handler import error_handler
 import random
 import string
 
@@ -13,14 +14,25 @@ class AuthController:
         """Handle user registration"""
         # Check required fields
         if not user.username or not user.email or not user.password:
-            error_handler(400, "All fields are required")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All fields are required"
+            )
         
-        # Check if user already exists
-        if self.user_model.find_user_by_email(user.email):
-            error_handler(400, "Email already exists")
+        # Check if user already exists (using await now)
+        existing_user_email = await self.user_model.find_user_by_email(user.email)
+        if existing_user_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already exists"
+            )
         
-        if self.user_model.find_user_by_username(user.username):
-            error_handler(400, "Username already exists")
+        existing_user_username = await self.user_model.find_user_by_username(user.username)
+        if existing_user_username:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already exists"
+            )
         
         # Hash password
         hashed_password = hash_password(user.password)
@@ -34,24 +46,33 @@ class AuthController:
             "isAdmin": False
         }
         
-        # Save user
-        user_id = self.user_model.create_user(user_data)
+        # Save user (using await now)
+        user_id = await self.user_model.create_user(user_data)
         
         return {"message": "Signup successful", "userId": user_id}
 
     async def signin(self, user: UserLogin):
         """Handle user login"""
         if not user.email or not user.password:
-            error_handler(400, "All fields are required")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All fields are required"
+            )
         
-        # Find user
-        db_user = self.user_model.find_user_by_email(user.email)
+        # Find user (using await now)
+        db_user = await self.user_model.find_user_by_email(user.email)
         if not db_user:
-            error_handler(404, "User not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
         
         # Verify password
         if not verify_password(user.password, db_user["password"]):
-            error_handler(400, "Invalid password")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid password"
+            )
         
         # Create token
         token = create_jwt_token(str(db_user["_id"]), db_user.get("isAdmin", False))
@@ -66,17 +87,17 @@ class AuthController:
         )
         
         return {
-            "user": user_response.dict(),
+            "user": user_response.model_dump(),  # Changed from .dict() to .model_dump()
             "token": token
         }
 
     async def google_auth(self, user_data: UserGoogle):
         """Handle Google authentication"""
         try:
-            db_user = self.user_model.find_user_by_email(user_data.email)
+            db_user = await self.user_model.find_user_by_email(user_data.email)
             
             if db_user:
-                # User exists - login (CONSISTENT with signin)
+                # User exists - login
                 token = create_jwt_token(str(db_user["_id"]), db_user.get("isAdmin", False))
                 
                 user_response = UserResponse(
@@ -101,12 +122,17 @@ class AuthController:
                     "isAdmin": False
                 }
                 
-                user_id = self.user_model.create_user(new_user_data)
+                user_id = await self.user_model.create_user(new_user_data)
                 
                 # Get the created user FRESH from database
-                db_user = self.user_model.find_user_by_id(user_id)
+                db_user = await self.user_model.find_user_by_id(user_id)
                 
-                # ✅ CONSISTENT with existing user flow
+                if not db_user:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to create user"
+                    )
+                
                 token = create_jwt_token(str(db_user["_id"]), db_user.get("isAdmin", False))
                 
                 user_response = UserResponse(
@@ -118,12 +144,17 @@ class AuthController:
                 )
             
             return {
-                "user": user_response.dict(),
+                "user": user_response.model_dump(),  # Changed from .dict() to .model_dump()
                 "token": token
             }
             
+        except HTTPException:
+            raise
         except Exception as e:
-            error_handler(500, f"Google authentication failed: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Google authentication failed: {str(e)}"
+            )
 
 # Create controller instance
 auth_controller = AuthController()
