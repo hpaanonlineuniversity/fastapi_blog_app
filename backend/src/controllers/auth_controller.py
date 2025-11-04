@@ -61,9 +61,9 @@ class AuthController:
         
         return {"message": "Signup successful", "userId": user_id}
 
-    # controllers/auth_controller.py (Updated - Just the signin method)
+        # controllers/auth_controller.py (Updated - Remove tokens from response)
     async def signin(self, user: UserLogin, response: Response):
-        """Handle user login with refresh tokens"""
+        """Handle user login with refresh tokens - Cookies only"""
         if not user.email or not user.password:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -89,23 +89,14 @@ class AuthController:
         
         # Create tokens
         access_token = create_access_token(user_id, db_user.get("isAdmin", False))
-        refresh_token = await create_refresh_token(user_id)  # ✅ Add await here
+        refresh_token = await create_refresh_token(user_id)
         
-        # Prepare user response
-        user_response = UserResponse(
-            id=user_id,
-            username=db_user["username"],
-            email=db_user["email"],
-            profilePicture=db_user.get("profilePicture"),
-            isAdmin=db_user.get("isAdmin", False)
-        )
-        
-        # Set HTTP-only cookies
+        # Set HTTP-only cookies ONLY (no tokens in response)
         response.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
-            secure=False,  # ✅ Set to False for development (HTTP)
+            secure=False,  # Set to True in production
             samesite="lax",
             max_age=15 * 60  # 15 minutes
         )
@@ -114,27 +105,36 @@ class AuthController:
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=False,  # ✅ Set to False for development (HTTP)
+            secure=False,  # Set to True in production
             samesite="lax",
             max_age=7 * 24 * 60 * 60  # 7 days
         )
         
+        # Prepare user response (NO tokens in response)
+        user_response = UserResponse(
+            id=user_id,
+            username=db_user["username"],
+            email=db_user["email"],
+            profilePicture=db_user.get("profilePicture"),
+            isAdmin=db_user.get("isAdmin", False)
+        )
+        
         return {
-            "user": user_response.model_dump(),
-            "access_token": access_token,
-            "refresh_token": refresh_token
+            "message": "Login successful",
+            "user": user_response.model_dump()
+            # ✅ No access_token or refresh_token in response
         }
     
 
     async def refresh_tokens(self, refresh_token: str, response: Response):
-        """Refresh access token using refresh token"""
+        """Refresh access token using refresh token - Cookies only"""
         if not refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Refresh token required"
             )
         
-        payload = verify_refresh_token(refresh_token)
+        payload = await verify_refresh_token(refresh_token)  # ✅ Add await
         if not payload:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -151,31 +151,31 @@ class AuthController:
         
         # Create new tokens
         new_access_token = create_access_token(user_id, user.get("isAdmin", False))
-        new_refresh_token = create_refresh_token(user_id)
+        new_refresh_token = await create_refresh_token(user_id)  # ✅ Add await
         
-        # Set new cookies
+        # Set new cookies ONLY (no tokens in response)
         response.set_cookie(
             key="access_token",
             value=new_access_token,
             httponly=True,
-            secure=True,
+            secure=False,
             samesite="lax",
-            max_age=15 * 60  # 15 minutes
+            max_age=15 * 60
         )
         
         response.set_cookie(
             key="refresh_token",
             value=new_refresh_token,
             httponly=True,
-            secure=True,
+            secure=False,
             samesite="lax",
-            max_age=7 * 24 * 60 * 60  # 7 days
+            max_age=7 * 24 * 60 * 60
         )
         
         return {
-            "access_token": new_access_token,
-            "refresh_token": new_refresh_token
-        }
+            "message": "Tokens refreshed successfully"
+            # ✅ No tokens in response
+        }                       
 
     # controllers/auth_controller.py (Update logout methods)
     async def logout(self, user_id: str, access_token: str, refresh_token: str, response: Response):
@@ -210,14 +210,14 @@ class AuthController:
         return {"message": "Logged out from all devices successfully"}
 
     async def google_auth(self, user_data: UserGoogle, response: Response):
-        """Handle Google authentication with tokens"""
+        """Handle Google authentication with tokens - Cookies only"""
         try:
             db_user = await self.user_model.find_user_by_email(user_data.email)
             
             if db_user:
                 # User exists - login
                 access_token = create_access_token(str(db_user["_id"]), db_user.get("isAdmin", False))
-                refresh_token = create_refresh_token(str(db_user["_id"]))
+                refresh_token = await create_refresh_token(str(db_user["_id"]))  # ✅ Add await
                 
                 user_response = UserResponse(
                     id=str(db_user["_id"]),
@@ -253,7 +253,7 @@ class AuthController:
                     )
                 
                 access_token = create_access_token(str(db_user["_id"]), db_user.get("isAdmin", False))
-                refresh_token = create_refresh_token(str(db_user["_id"]))
+                refresh_token = await create_refresh_token(str(db_user["_id"]))  # ✅ Add await
                 
                 user_response = UserResponse(
                     id=str(db_user["_id"]),
@@ -263,12 +263,12 @@ class AuthController:
                     isAdmin=db_user.get("isAdmin", False)
                 )
             
-            # Set cookies
+            # Set cookies ONLY (no tokens in response)
             response.set_cookie(
                 key="access_token",
                 value=access_token,
                 httponly=True,
-                secure=True,
+                secure=False,
                 samesite="lax",
                 max_age=15 * 60
             )
@@ -277,15 +277,15 @@ class AuthController:
                 key="refresh_token",
                 value=refresh_token,
                 httponly=True,
-                secure=True,
+                secure=False,
                 samesite="lax",
                 max_age=7 * 24 * 60 * 60
             )
             
             return {
-                "user": user_response.model_dump(),
-                "access_token": access_token,
-                "refresh_token": refresh_token
+                "message": "Google authentication successful",
+                "user": user_response.model_dump()
+                # ✅ No tokens in response
             }
             
         except HTTPException:
