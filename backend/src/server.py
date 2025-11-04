@@ -7,15 +7,12 @@ from .configs.database import get_database
 
 environment = os.getenv("ENVIRONMENT", "development")
 
-##app = FastAPI(title="FastAPI Auth System")
-
 app = FastAPI(
     title="FastAPI Auth System",
-    # Development မှာပဲ Swagger ဖွင့်
+    description="Production API - Swagger disabled for security",
+    version="1.0.0",
     docs_url="/docs" if environment != "production" else None,
     redoc_url="/redoc" if environment != "production" else None,
-    
-    # Production settings
     debug=False if environment == "production" else True
 )
 
