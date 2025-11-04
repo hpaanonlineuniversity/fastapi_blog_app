@@ -1,11 +1,12 @@
+# server.py (update version)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import auth_route
+from .routes import auth_route, user_route  # ✅ Add user_route
 from .configs.database import get_database
 
 app = FastAPI(title="FastAPI Auth System")
 
-# CORS settings
+# CORS settings (same as before)
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -22,14 +23,15 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_route.router, prefix="/api/auth")
+app.include_router(user_route.router, prefix="/api/user")  # ✅ Add this line
 
+# Rest of the code remains the same...
 @app.get("/")
 async def root():
     return {"message": "Hello World from FastAPI!"}
 
 @app.on_event("startup")
 async def startup_event():
-    # Test database connection
     db = get_database()
     try:
         db.command("ping")
@@ -46,13 +48,3 @@ if __name__ == "__main__":
         port=8000, 
         reload=True
     )
-
-
-#if you want to run fastapi from python interpreter with "python server.py" please uncomment the following codes
-## or you can run with the following command
-##       "uvicorn server:app --port 8000 --reload"
-## if __name__ == "__main__":
-##
-##    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
-##
-##
