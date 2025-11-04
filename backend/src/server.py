@@ -1,10 +1,23 @@
 # server.py (update version)
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routes import auth_route, user_route  # ✅ Add user_route
 from .configs.database import get_database
 
-app = FastAPI(title="FastAPI Auth System")
+environment = os.getenv("ENVIRONMENT", "development")
+
+##app = FastAPI(title="FastAPI Auth System")
+
+app = FastAPI(
+    title="FastAPI Auth System",
+    # Development မှာပဲ Swagger ဖွင့်
+    docs_url="/docs" if environment != "production" else None,
+    redoc_url="/redoc" if environment != "production" else None,
+    
+    # Production settings
+    debug=False if environment == "production" else True
+)
 
 # CORS settings (same as before)
 origins = [
