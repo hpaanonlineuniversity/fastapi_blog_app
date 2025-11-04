@@ -1,7 +1,7 @@
 # routes/auth_route.py (Updated)
 from fastapi import APIRouter, Response, Request, Cookie, Depends
 from ..controllers.auth_controller import auth_controller
-from ..schemas.user_schema import UserCreate, UserLogin, UserGoogle, TokenResponse
+from ..schemas.user_schema import UserCreate, UserLogin, UserGoogle
 from ..utils.auth_dependency import get_current_user
 
 router = APIRouter()
@@ -16,7 +16,7 @@ async def signin(user: UserLogin, response: Response):
     """User login endpoint"""
     return await auth_controller.signin(user, response)
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post("/refresh", response_model=dict)
 async def refresh_tokens(
     response: Response,
     refresh_token: str = Cookie(None, alias="refresh_token")

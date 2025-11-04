@@ -60,3 +60,4 @@ class UsersResponse(BaseModel):
     users: list[UserResponse]
     totalUsers: int
     lastMonthUsers: int
+
