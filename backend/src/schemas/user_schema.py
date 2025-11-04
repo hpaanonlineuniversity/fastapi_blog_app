@@ -60,3 +60,9 @@ class UsersResponse(BaseModel):
     users: list[UserResponse]
     totalUsers: int
     lastMonthUsers: int
+
+# schemas/user_schema.py (Add this)
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"

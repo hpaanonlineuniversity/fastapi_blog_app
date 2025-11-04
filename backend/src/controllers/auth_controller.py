@@ -1,8 +1,18 @@
-# controllers/auth_controller.py
-from fastapi import HTTPException, status
+# controllers/auth_controller.py (Correct imports)
+from fastapi import HTTPException, status, Response
 from ..models.user_model import UserModel
 from ..schemas.user_schema import UserCreate, UserLogin, UserGoogle, UserResponse
-from ..utils.security import hash_password, verify_password, create_jwt_token
+from ..utils.security import (
+    hash_password, 
+    verify_password, 
+    create_access_token,  # ✅ This should work now
+    create_refresh_token,
+    verify_refresh_token,
+    revoke_refresh_token,
+    revoke_all_user_tokens,
+    blacklist_token,  # ✅ Add this
+    blacklist_user_tokens  # ✅ Add this
+)
 import random
 import string
 
@@ -19,7 +29,7 @@ class AuthController:
                 detail="All fields are required"
             )
         
-        # Check if user already exists (using await now)
+        # Check if user already exists
         existing_user_email = await self.user_model.find_user_by_email(user.email)
         if existing_user_email:
             raise HTTPException(
@@ -46,20 +56,21 @@ class AuthController:
             "isAdmin": False
         }
         
-        # Save user (using await now)
+        # Save user
         user_id = await self.user_model.create_user(user_data)
         
         return {"message": "Signup successful", "userId": user_id}
 
-    async def signin(self, user: UserLogin):
-        """Handle user login"""
+    # controllers/auth_controller.py (Updated - Just the signin method)
+    async def signin(self, user: UserLogin, response: Response):
+        """Handle user login with refresh tokens"""
         if not user.email or not user.password:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="All fields are required"
             )
         
-        # Find user (using await now)
+        # Find user
         db_user = await self.user_model.find_user_by_email(user.email)
         if not db_user:
             raise HTTPException(
@@ -74,31 +85,139 @@ class AuthController:
                 detail="Invalid password"
             )
         
-        # Create token
-        token = create_jwt_token(str(db_user["_id"]), db_user.get("isAdmin", False))
+        user_id = str(db_user["_id"])
         
-        # Prepare user response (remove password)
+        # Create tokens
+        access_token = create_access_token(user_id, db_user.get("isAdmin", False))
+        refresh_token = await create_refresh_token(user_id)  # ✅ Add await here
+        
+        # Prepare user response
         user_response = UserResponse(
-            id=str(db_user["_id"]),
+            id=user_id,
             username=db_user["username"],
             email=db_user["email"],
             profilePicture=db_user.get("profilePicture"),
             isAdmin=db_user.get("isAdmin", False)
         )
         
+        # Set HTTP-only cookies
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=False,  # ✅ Set to False for development (HTTP)
+            samesite="lax",
+            max_age=15 * 60  # 15 minutes
+        )
+        
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=False,  # ✅ Set to False for development (HTTP)
+            samesite="lax",
+            max_age=7 * 24 * 60 * 60  # 7 days
+        )
+        
         return {
-            "user": user_response.model_dump(),  # Changed from .dict() to .model_dump()
-            "token": token
+            "user": user_response.model_dump(),
+            "access_token": access_token,
+            "refresh_token": refresh_token
+        }
+    
+
+    async def refresh_tokens(self, refresh_token: str, response: Response):
+        """Refresh access token using refresh token"""
+        if not refresh_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token required"
+            )
+        
+        payload = verify_refresh_token(refresh_token)
+        if not payload:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token"
+            )
+        
+        user_id = payload.get("id")
+        user = await self.user_model.find_user_by_id(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Create new tokens
+        new_access_token = create_access_token(user_id, user.get("isAdmin", False))
+        new_refresh_token = create_refresh_token(user_id)
+        
+        # Set new cookies
+        response.set_cookie(
+            key="access_token",
+            value=new_access_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=15 * 60  # 15 minutes
+        )
+        
+        response.set_cookie(
+            key="refresh_token",
+            value=new_refresh_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=7 * 24 * 60 * 60  # 7 days
+        )
+        
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token
         }
 
-    async def google_auth(self, user_data: UserGoogle):
-        """Handle Google authentication"""
+    # controllers/auth_controller.py (Update logout methods)
+    async def logout(self, user_id: str, access_token: str, refresh_token: str, response: Response):
+        """Logout user by revoking and blacklisting tokens"""
+        # Revoke refresh token from Redis
+        await revoke_refresh_token(user_id)
+        
+        # Blacklist both tokens
+        await blacklist_user_tokens(user_id, access_token, refresh_token)
+        
+        # Clear cookies
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
+        
+        return {"message": "Logged out successfully"}
+
+    # controllers/auth_controller.py (Simple approach)
+    async def logout_all_devices(self, user_id: str, access_token: str, response: Response):
+        """Logout user from all devices and blacklist current tokens"""
+        # Revoke all refresh tokens for user (this prevents new access tokens)
+        await revoke_all_user_tokens(user_id)
+        
+        # Blacklist the current access token (if provided)
+        if access_token:
+            await blacklist_token(access_token, "access", expire_seconds=15*60)
+            print(f"✅ Blacklisted current access token during logout-all")
+        
+        # Clear cookies
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
+        
+        return {"message": "Logged out from all devices successfully"}
+
+    async def google_auth(self, user_data: UserGoogle, response: Response):
+        """Handle Google authentication with tokens"""
         try:
             db_user = await self.user_model.find_user_by_email(user_data.email)
             
             if db_user:
                 # User exists - login
-                token = create_jwt_token(str(db_user["_id"]), db_user.get("isAdmin", False))
+                access_token = create_access_token(str(db_user["_id"]), db_user.get("isAdmin", False))
+                refresh_token = create_refresh_token(str(db_user["_id"]))
                 
                 user_response = UserResponse(
                     id=str(db_user["_id"]),
@@ -124,7 +243,7 @@ class AuthController:
                 
                 user_id = await self.user_model.create_user(new_user_data)
                 
-                # Get the created user FRESH from database
+                # Get the created user
                 db_user = await self.user_model.find_user_by_id(user_id)
                 
                 if not db_user:
@@ -133,7 +252,8 @@ class AuthController:
                         detail="Failed to create user"
                     )
                 
-                token = create_jwt_token(str(db_user["_id"]), db_user.get("isAdmin", False))
+                access_token = create_access_token(str(db_user["_id"]), db_user.get("isAdmin", False))
+                refresh_token = create_refresh_token(str(db_user["_id"]))
                 
                 user_response = UserResponse(
                     id=str(db_user["_id"]),
@@ -143,9 +263,29 @@ class AuthController:
                     isAdmin=db_user.get("isAdmin", False)
                 )
             
+            # Set cookies
+            response.set_cookie(
+                key="access_token",
+                value=access_token,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+                max_age=15 * 60
+            )
+            
+            response.set_cookie(
+                key="refresh_token",
+                value=refresh_token,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+                max_age=7 * 24 * 60 * 60
+            )
+            
             return {
-                "user": user_response.model_dump(),  # Changed from .dict() to .model_dump()
-                "token": token
+                "user": user_response.model_dump(),
+                "access_token": access_token,
+                "refresh_token": refresh_token
             }
             
         except HTTPException:
