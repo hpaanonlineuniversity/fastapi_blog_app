@@ -6,7 +6,7 @@ import { useState, FormEvent, ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import OAuth from '../components/OAuth';
-import { useAppDispatch, useAppSelector } from '../hook/redux';
+import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import {
   signInStart,
   signInSuccess,

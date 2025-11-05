@@ -9,7 +9,7 @@ import { FaMoon, FaSun } from 'react-icons/fa';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAppSelector, useAppDispatch } from '../hook/redux';
+import { useAppSelector, useAppDispatch } from '../hooks/redux';
 import { signOut } from '../redux/user/userSlice';
 import { toggleTheme } from '../redux/theme/themeSlice';
 
