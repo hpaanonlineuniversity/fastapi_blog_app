@@ -36,7 +36,6 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=password
     volumes:
       - mongo-data:/data/db
-
   
   redis:
     image: redis:alpine
@@ -50,21 +49,6 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}    
 
-  frontend:
-    build: 
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "5173:5173"
-    volumes:
-        - node_modules_frontend:/app/node_modules
-        - ./frontend:/app
-    env_file:
-      - .env
-    environment:
-      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
-      - VITE_SUPABASE_KEY=${VITE_SUPABASE_KEY}
-  
 volumes:
   mongo-data:
   node_modules_frontend:
