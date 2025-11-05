@@ -1,4 +1,4 @@
-// app/sign-up/page.tsx (Enhanced version)
+// app/sign-up/page.tsx - COMPLETE FIXED VERSION
 'use client';
 
 import { Alert, Button, Label, Spinner, TextInput, Card } from 'flowbite-react';
@@ -8,98 +8,51 @@ import { useRouter } from 'next/navigation';
 import OAuth from '../components/OAuth';
 
 interface FormData {
-  username: string;
-  email: string;
-  password: string;
-}
-
-interface ApiResponse {
-  success: boolean;
-  message?: string;
-  user?: any;
+  username?: string;
+  email?: string;
+  password?: string;
 }
 
 export default function SignUp() {
-  const [formData, setFormData] = useState<FormData>({
-    username: '',
-    email: '',
-    password: ''
-  });
+  const [formData, setFormData] = useState<FormData>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const { id, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [id]: value.trim()
-    }));
-    // Clear error when user starts typing
-    if (errorMessage) {
-      setErrorMessage(null);
-    }
-  };
-
-  const validateForm = (): boolean => {
-    if (!formData.username.trim()) {
-      setErrorMessage('Please enter a username');
-      return false;
-    }
-    if (!formData.email.trim()) {
-      setErrorMessage('Please enter an email address');
-      return false;
-    }
-    if (!formData.password.trim()) {
-      setErrorMessage('Please enter a password');
-      return false;
-    }
-    if (formData.password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters long');
-      return false;
-    }
-    if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      setErrorMessage('Please enter a valid email address');
-      return false;
-    }
-    return true;
+    setFormData({ ...formData, [e.target.id]: e.target.value.trim() });
   };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!validateForm()) {
-      return;
+    if (!formData.username || !formData.email || !formData.password) {
+      return setErrorMessage('Please fill out all fields.');
     }
 
     try {
       setLoading(true);
       setErrorMessage(null);
-      
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(formData),
       });
       
-      const data: ApiResponse = await res.json();
+      const data = await res.json();
       
-      if (!res.ok || data.success === false) {
-        throw new Error(data.message || 'Something went wrong');
+      if (data.success === false) {
+        return setErrorMessage(data.message);
       }
       
-      // Success - redirect to sign in
-      router.push('/sign-in');
+      setLoading(false);
       
+      if (res.ok) {
+        router.push('/sign-in');
+      }
     } catch (error) {
-      console.error('Signup error:', error);
-      setErrorMessage(
-        (error as Error).message || 'An error occurred during sign up'
-      );
-    } finally {
+      setErrorMessage((error as Error).message);
       setLoading(false);
     }
   };
@@ -137,7 +90,7 @@ export default function SignUp() {
                 Create Account
               </h2>
               <p className='text-gray-600 dark:text-gray-400 mt-2'>
-                Sign up to get started with our blog
+                Sign up to get started
               </p>
             </div>
 
@@ -148,11 +101,9 @@ export default function SignUp() {
                   type='text'
                   placeholder='Enter your username'
                   id='username'
-                  value={formData.username}
                   onChange={handleChange}
                   required
                   shadow
-                  disabled={loading}
                 />
               </div>
               
@@ -162,11 +113,9 @@ export default function SignUp() {
                   type='email'
                   placeholder='name@company.com'
                   id='email'
-                  value={formData.email}
                   onChange={handleChange}
                   required
                   shadow
-                  disabled={loading}
                 />
               </div>
               
@@ -174,26 +123,30 @@ export default function SignUp() {
                 <Label htmlFor='password' value='Password' />
                 <TextInput
                   type='password'
-                  placeholder='Create a password (min. 6 characters)'
+                  placeholder='Create a password'
                   id='password'
-                  value={formData.password}
                   onChange={handleChange}
                   required
                   shadow
-                  disabled={loading}
-                  minLength={6}
                 />
               </div>
 
+              {/* ✅ FIXED BUTTON - Remove isProcessing */}
               <Button
-                gradientDuoTone="purpleToPink"
+                color="purple"
                 type='submit'
                 disabled={loading}
-                className='w-full mt-4 transition-all duration-200'
+                className='w-full mt-4 transition-all duration-200 hover:shadow-lg'
                 size='lg'
-                isProcessing={loading}
               >
-                {loading ? 'Creating Account...' : 'Sign Up'}
+                {loading ? (
+                  <>
+                    <Spinner size='sm' />
+                    <span className='pl-3'>Creating Account...</span>
+                  </>
+                ) : (
+                  'Sign Up'
+                )}
               </Button>
             </form>
 
@@ -212,7 +165,7 @@ export default function SignUp() {
               <span className='text-gray-600 dark:text-gray-400'>
                 Already have an account?{' '}
                 <Link 
-                  href='/sign-in' 
+                  href='/sign-in'
                   className='text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 font-medium transition-colors duration-200'
                 >
                   Sign In
@@ -223,11 +176,7 @@ export default function SignUp() {
 
           {/* Error Message */}
           {errorMessage && (
-            <Alert 
-              className='mt-4 animate-fade-in' 
-              color='failure'
-              onDismiss={() => setErrorMessage(null)}
-            >
+            <Alert className='mt-4' color='failure'>
               <span className='font-medium'>Error!</span> {errorMessage}
             </Alert>
           )}

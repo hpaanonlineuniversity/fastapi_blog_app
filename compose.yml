@@ -59,8 +59,13 @@ services:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
+    env_file:
+      - .env
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=${ENVIRONMENT}
+      - BACKEND_URL=${BACKEND_URL}
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_KEY=${NEXT_PUBLIC_SUPABASE_KEY}
     stdin_open: true
     tty: true
 

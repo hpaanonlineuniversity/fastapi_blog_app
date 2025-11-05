@@ -1,4 +1,4 @@
-// components/OAuth.tsx (Enhanced version)
+// components/OAuth.tsx - FIXED VERSION
 'use client';
 
 import { Button } from 'flowbite-react';
@@ -32,7 +32,6 @@ export default function OAuth() {
     } catch (error) {
       console.error('Google OAuth error:', error);
       setError((error as Error).message || 'Failed to sign in with Google');
-      // You can replace this with a toast notification
     } finally {
       setLoading(false);
     }
@@ -40,6 +39,7 @@ export default function OAuth() {
 
   return (
     <div className="w-full">
+      {/* ✅ FIXED BUTTON - Remove isProcessing prop */}
       <Button 
         type='button' 
         color="purple" 
@@ -47,10 +47,18 @@ export default function OAuth() {
         onClick={handleGoogleClick}
         disabled={loading}
         className="w-full transition-all duration-200"
-        isProcessing={loading}
       >
-        {!loading && <AiFillGoogleCircle className='w-6 h-6 mr-2'/>}
-        {loading ? 'Connecting to Google...' : 'Continue with Google'}
+        {loading ? (
+          <>
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600 mr-2"></div>
+            Connecting to Google...
+          </>
+        ) : (
+          <>
+            <AiFillGoogleCircle className='w-6 h-6 mr-2'/>
+            Continue with Google
+          </>
+        )}
       </Button>
       
       {error && (
