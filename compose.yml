@@ -48,9 +48,23 @@ services:
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}    
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      # Hot reloading - sync local changes
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+    stdin_open: true
+    tty: true
 
 volumes:
   mongo-data:
-  node_modules_frontend:
   redis_data:
 

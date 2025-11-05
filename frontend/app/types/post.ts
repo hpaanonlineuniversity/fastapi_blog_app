@@ -1,0 +1,13 @@
+// types/post.ts
+export interface Post {
+  _id: string;
+  title: string;
+  content: string;
+  image: string;
+  category: string;
+  slug: string;
+  username: string;
+  userProfilePicture: string;
+  createdAt: string;
+  updatedAt?: string;
+}
