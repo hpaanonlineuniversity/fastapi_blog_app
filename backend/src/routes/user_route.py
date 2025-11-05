@@ -28,11 +28,6 @@ async def delete_user(
     """Delete user"""
     return await user_controller.delete_user(user_id, current_user)
 
-@router.post("/signout")
-async def signout():
-    """Sign out user"""
-    return await user_controller.signout()
-
 @router.get("/getusers", response_model=UsersResponse)
 async def get_users(
     current_user: dict = Depends(get_current_user),

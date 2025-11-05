@@ -95,10 +95,6 @@ class UserController:
         
         return {"message": "User has been deleted"}
 
-    async def signout(self):
-        """Sign out user"""
-        return {"message": "User has been signed out"}
-
     async def get_users(self, current_user: dict, start_index: int = 0, limit: int = 9, sort: str = "desc"):
         """Get all users (admin only)"""
         if not current_user["isAdmin"]:
