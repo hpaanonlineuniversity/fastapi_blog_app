@@ -177,20 +177,62 @@ class AuthController:
             # ✅ No tokens in response
         }                       
 
-    # controllers/auth_controller.py (Update logout methods)
+    # controllers/auth_controller.py - logout function ကို update
+
     async def logout(self, user_id: str, access_token: str, refresh_token: str, response: Response):
-        """Logout user by revoking and blacklisting tokens"""
-        # Revoke refresh token from Redis
-        await revoke_refresh_token(user_id)
+        """Logout user - handle all cases safely"""
         
-        # Blacklist both tokens
-        await blacklist_user_tokens(user_id, access_token, refresh_token)
+        print(f"🔍 LOGOUT DEBUG - user_id: {user_id}, access_token: {access_token is not None}, refresh_token: {refresh_token is not None}")
         
-        # Clear cookies
-        response.delete_cookie("access_token")
-        response.delete_cookie("refresh_token")
-        
-        return {"message": "Logged out successfully"}
+        try:
+            # Only revoke tokens if we have valid user_id
+            if user_id and user_id != "None":
+                print(f"✅ Processing token revocation for user: {user_id}")
+                
+                try:
+                    # Revoke refresh token from Redis
+                    await revoke_refresh_token(user_id)
+                    print(f"✅ Revoked refresh tokens for user: {user_id}")
+                except Exception as e:
+                    print(f"❌ Revoke refresh token failed: {e}")
+                
+                # Blacklist both tokens if we have them
+                try:
+                    if access_token and access_token != "None":
+                        print(f"🔍 Attempting to blacklist access token: {access_token[:20]}...")
+                        success = await blacklist_token(access_token, "access", expire_seconds=15*60)
+                        print(f"✅ Access token blacklist result: {success}")
+                    else:
+                        print("❌ No access token to blacklist")
+                except Exception as e:
+                    print(f"❌ Blacklist access token failed: {e}")
+                    
+                try:
+                    if refresh_token and refresh_token != "None":
+                        print(f"🔍 Attempting to blacklist refresh token: {refresh_token[:20]}...")
+                        success = await blacklist_token(refresh_token, "refresh", expire_seconds=7*24*60*60)
+                        print(f"✅ Refresh token blacklist result: {success}")
+                    else:
+                        print("❌ No refresh token to blacklist")
+                except Exception as e:
+                    print(f"❌ Blacklist refresh token failed: {e}")
+            else:
+                print("❌ No valid user_id provided, skipping token revocation")
+            
+            # Always clear cookies regardless of authentication status
+            response.delete_cookie("access_token")
+            response.delete_cookie("refresh_token")
+            
+            print("✅ Cookies cleared successfully")
+            return {"message": "Logged out successfully"}
+            
+        except Exception as e:
+            print(f"❌ Logout error: {e}")
+            # Even if there's an error, clear cookies
+            response.delete_cookie("access_token") 
+            response.delete_cookie("refresh_token")
+            return {"message": "Logged out successfully"}  
+
 
     # controllers/auth_controller.py (Simple approach)
     async def logout_all_devices(self, user_id: str, access_token: str, response: Response):

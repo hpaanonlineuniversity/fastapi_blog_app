@@ -12,6 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAppSelector, useAppDispatch } from '../hooks/redux';
 import { signOut } from '../redux/user/userSlice';
 import { toggleTheme } from '../redux/theme/themeSlice';
+import { apiInterceptor } from '../utils/apiInterceptor';
 
 const Header = () => {
   const { currentUser } = useAppSelector((state) => state.user);
@@ -31,22 +32,27 @@ const Header = () => {
     }
   }, [pathname]);
 
-  const handleSignOut = async () => {
-    try {
-      const response = await fetch('/api/user/signout', {
-        method: 'POST',
-        credentials: 'include'
-      });
-      
-      console.log('Signout response status:', response.status);
-      if (response.ok) {
-        dispatch(signOut());
-        router.push('/sign-in');
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  };
+const handleSignOut = async () => {
+  try {
+    
+    await apiInterceptor.request('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
+  } catch (error) {
+    console.log('Signout API error:', error);
+  } finally {
+    // Always execute these steps regardless of API response
+    dispatch(signOut());
+    
+    // Clear cookies manually
+    document.cookie = "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    document.cookie = "refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    
+    // Force redirect to sign-in
+    window.location.href = '/sign-in';
+  }
+};
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

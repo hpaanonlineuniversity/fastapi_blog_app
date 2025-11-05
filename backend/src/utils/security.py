@@ -106,16 +106,27 @@ async def verify_refresh_token(token: str):
     except jwt.InvalidTokenError:
         return None
 
+# utils/security.py - blacklist_token function ကို update
+
 async def blacklist_token(token: str, token_type: str = "access", expire_seconds: int = 3600):
     """Add token to blacklist with expiration"""
+    if not token or token == "None":
+        print(f"❌ Cannot blacklist empty token for type: {token_type}")
+        return False
+        
     # Create a unique key for blacklisted token
     blacklist_key = f"blacklist:{token_type}:{token}"
+    
+    print(f"🔍 Attempting to blacklist - Key: {blacklist_key}, Expiry: {expire_seconds}s")
     
     # Store with expiration (default 1 hour for access tokens)
     success = await redis_client.set_key(blacklist_key, "blacklisted", expire_seconds)
     
     if success:
-        print(f"✅ Blacklisted {token_type} token: {token[:20]}...")
+        print(f"✅ Successfully blacklisted {token_type} token: {token[:20]}...")
+        # Verify it was actually stored
+        exists = await redis_client.exists_key(blacklist_key)
+        print(f"✅ Blacklist verification - exists: {exists}")
     else:
         print(f"❌ Failed to blacklist {token_type} token")
     
