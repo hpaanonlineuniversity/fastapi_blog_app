@@ -1,4 +1,4 @@
-// app/sign-in/page.tsx (Enhanced version)
+// app/sign-in/page.tsx - FIXED VERSION
 'use client';
 
 import { Alert, Button, Label, Spinner, TextInput, Card } from 'flowbite-react';
@@ -187,15 +187,22 @@ export default function SignIn() {
                 />
               </div>
 
+              {/* ✅ FIXED BUTTON - Remove isProcessing prop */}
               <Button
                 color="purple"
                 type='submit'
                 disabled={loading}
                 className='w-full mt-2 transition-all duration-200 hover:shadow-lg'
                 size='lg'
-                isProcessing={loading}
               >
-                {loading ? 'Signing In...' : 'Sign In'}
+                {loading ? (
+                  <>
+                    <Spinner size='sm' />
+                    <span className='pl-3'>Signing In...</span>
+                  </>
+                ) : (
+                  'Sign In'
+                )}
               </Button>
             </form>
 
