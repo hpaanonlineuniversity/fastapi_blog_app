@@ -1,33 +1,31 @@
-// app/auth/callback/page.tsx - CORRECTED VERSION
+// app/auth/callback/page.tsx - BETTER VERSION WITH URL TRACKING
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useDispatch } from 'react-redux';
 import { supabase } from '../../lib/supabase';
 import { signInSuccess } from '../../redux/user/userSlice';
 import { apiInterceptor } from '@/app/utils/apiInterceptor';
 
-interface ApiUser {
-  _id: string;
-  username: string;
-  email: string;
-  profilePicture: string;
-  isAdmin: boolean;
-}
-
-interface ApiResponse {
-  user: ApiUser;
-}
+// ... interfaces remain the same
 
 export default function CallbackPage() {
   const router = useRouter();
   const dispatch = useDispatch();
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState('Initializing authentication...');
   const hasProcessed = useRef(false);
 
   useEffect(() => {
-    // ✅ Prevent the effect from running twice in same session
+    // ✅ Check if we already processed this specific OAuth flow
+    const processedId = searchParams.get('processed');
+    if (processedId === 'true') {
+      console.log('OAuth flow already completed, redirecting...');
+      router.push('/');
+      return;
+    }
+
     if (hasProcessed.current) {
       return;
     }
@@ -40,7 +38,6 @@ export default function CallbackPage() {
         // Wait for Supabase to process the OAuth callback
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // Get the session after OAuth processing
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
@@ -49,7 +46,6 @@ export default function CallbackPage() {
         }
 
         if (!session?.user) {
-          // Try alternative method to get session
           const { data: { user }, error: userError } = await supabase.auth.getUser();
           
           if (userError || !user) {
@@ -57,12 +53,10 @@ export default function CallbackPage() {
             throw new Error('Please try signing in again');
           }
           
-          // If we have user but no session, process user data
           await processUserData(user);
           return;
         }
 
-        // Process the session normally
         await processUserData(session.user);
 
       } catch (error) {
@@ -79,7 +73,6 @@ export default function CallbackPage() {
       try {
         setStatus('Processing user information...');
         
-        // Extract user data from GitHub OAuth
         const userData = {
           email: user.email,
           name: user.user_metadata.user_name || 
@@ -93,11 +86,7 @@ export default function CallbackPage() {
         };
 
         console.log('GitHub User Info:', userData);
-
         setStatus('Connecting to backend...');
-
-        // ✅ FIXED: Remove sessionStorage check that blocks subsequent logins
-        // We only use useRef to prevent duplicate execution in same component mount
 
         // Send to backend API
         const res = await apiInterceptor.request('/api/auth/github', {
@@ -135,8 +124,9 @@ export default function CallbackPage() {
         
         setStatus('Success! Redirecting...');
         
+        // ✅ Use URL parameter to prevent re-processing on page refresh
         setTimeout(() => {
-          router.push('/');
+          router.push('/?auth=success');
         }, 1000);
 
       } catch (error) {
@@ -146,7 +136,7 @@ export default function CallbackPage() {
     };
 
     handleAuthCallback();
-  }, [router, dispatch]);
+  }, [router, dispatch, searchParams]);
 
   return (
     <div className="flex justify-center items-center min-h-screen">
