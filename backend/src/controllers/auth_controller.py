@@ -251,15 +251,18 @@ class AuthController:
         
         return {"message": "Logged out from all devices successfully"}
 
-    async def google_auth(self, user_data: UserGoogle, response: Response):
-        """Handle Google authentication with tokens - Cookies only"""
+    # controllers/auth_controller.py - UPDATED github_auth method
+    async def github_auth(self, user_data: UserGoogle, response: Response):
+        """Handle GitHub authentication with better duplicate checking"""
         try:
+            # ✅ FIRST: Check if user exists with this email
             db_user = await self.user_model.find_user_by_email(user_data.email)
             
             if db_user:
+                print(f"✅ User found: {db_user['email']} - Logging in")
                 # User exists - login
                 access_token = create_access_token(str(db_user["_id"]), db_user.get("isAdmin", False))
-                refresh_token = await create_refresh_token(str(db_user["_id"]))  # ✅ Add await
+                refresh_token = await create_refresh_token(str(db_user["_id"]))
                 
                 user_response = UserResponse(
                     id=str(db_user["_id"]),
@@ -269,17 +272,31 @@ class AuthController:
                     isAdmin=db_user.get("isAdmin", False)
                 )
             else:
+                print(f"🆕 Creating new user: {user_data.email}")
                 # Create new user
                 generated_password = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
                 hashed_password = hash_password(generated_password)
                 
-                username = user_data.name.lower().replace(" ", "") + ''.join(random.choices(string.digits, k=4))
+                # ✅ BETTER username generation with retry logic
+                base_username = user_data.name.lower().replace(" ", "").replace(".", "")[:15]
+                username = base_username
+                counter = 1
+                
+                # Check if username already exists and generate unique one
+                while await self.user_model.find_user_by_username(username):
+                    username = f"{base_username}{counter}"
+                    counter += 1
+                    if counter > 100:  # Safety limit
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Could not generate unique username"
+                        )
                 
                 new_user_data = {
                     "username": username,
                     "email": user_data.email,
                     "password": hashed_password,
-                    "profilePicture": user_data.googlePhotoUrl,
+                    "profilePicture": user_data.googlePhotoUrl or "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png",
                     "isAdmin": False
                 }
                 
@@ -295,7 +312,7 @@ class AuthController:
                     )
                 
                 access_token = create_access_token(str(db_user["_id"]), db_user.get("isAdmin", False))
-                refresh_token = await create_refresh_token(str(db_user["_id"]))  # ✅ Add await
+                refresh_token = await create_refresh_token(str(db_user["_id"]))
                 
                 user_response = UserResponse(
                     id=str(db_user["_id"]),
@@ -325,17 +342,17 @@ class AuthController:
             )
             
             return {
-                "message": "Google authentication successful",
+                "message": "GitHub authentication successful",
                 "user": user_response.model_dump()
-                # ✅ No tokens in response
             }
             
         except HTTPException:
             raise
         except Exception as e:
+            print(f"❌ GitHub auth error: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Google authentication failed: {str(e)}"
+                detail=f"GitHub authentication failed: {str(e)}"
             )
 
 # Create controller instance

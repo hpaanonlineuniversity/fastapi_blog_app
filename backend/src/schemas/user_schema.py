@@ -12,10 +12,13 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
+# ✅ FIXED: Make googlePhotoUrl optional and add provider field
 class UserGoogle(BaseModel):
-    email: str
     name: str
-    googlePhotoUrl: str
+    email: EmailStr
+    googlePhotoUrl: Optional[str] = None
+    photo: Optional[str] = None  # ✅ Add alternative field name
+    provider: Optional[str] = "github"  # ✅ Add provider field
 
 class UserResponse(BaseModel):
     id: str

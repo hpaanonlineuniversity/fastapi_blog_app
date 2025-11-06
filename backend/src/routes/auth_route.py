@@ -105,7 +105,7 @@ async def logout_all(
         response
     )
 
-@router.post("/google", response_model=dict)
-async def google_auth(user_data: UserGoogle, response: Response):
+@router.post("/github", response_model=dict)
+async def github_auth(user_data: UserGoogle, response: Response):
     """Google authentication endpoint"""
-    return await auth_controller.google_auth(user_data, response)
+    return await auth_controller.github_auth(user_data, response)
