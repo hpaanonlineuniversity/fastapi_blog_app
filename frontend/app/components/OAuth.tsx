@@ -2,7 +2,7 @@
 'use client';
 
 import { Button } from 'flowbite-react';
-import { AiFillGoogleCircle } from 'react-icons/ai';
+import { AiFillGoogleCircle, AiFillGithub } from 'react-icons/ai';
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
@@ -16,7 +16,7 @@ export default function OAuth() {
       setError(null);
 
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: 'github',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
@@ -55,8 +55,8 @@ export default function OAuth() {
           </>
         ) : (
           <>
-            <AiFillGoogleCircle className='w-6 h-6 mr-2'/>
-            Continue with Google
+            <AiFillGithub className='w-6 h-6 mr-2'/>
+            Continue with Github
           </>
         )}
       </Button>
