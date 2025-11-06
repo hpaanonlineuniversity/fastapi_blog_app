@@ -113,7 +113,7 @@ export default function CallbackPage() {
 
         // Update Redux store
         const userDataForRedux = {
-          _id: data.user._id,
+          id: data.user.id,
           username: data.user.username,
           email: data.user.email,
           profilePicture: data.user.profilePicture,
