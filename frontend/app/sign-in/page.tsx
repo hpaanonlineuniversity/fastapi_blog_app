@@ -20,7 +20,7 @@ interface FormData {
 }
 
 interface UserData {
-  _id: string;
+  id: string;
   username: string;
   email: string;
   profilePicture: string;
@@ -95,7 +95,7 @@ export default function SignIn() {
 
       if (data.user) {
         const userData: UserData = {
-          _id: data.user._id,
+          id: data.user.id,
           username: data.user.username,
           email: data.user.email,
           profilePicture: data.user.profilePicture,

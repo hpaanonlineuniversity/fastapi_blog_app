@@ -1,38 +1,44 @@
-# utils/auth_dependency.py (Updated)
+# utils/auth_dependency.py (FIXED VERSION)
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .security import verify_access_token
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)  # ✅ Change to auto_error=False
 
-# utils/auth_dependency.py (Updated)
 async def get_current_user(
-    request: Request = None,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)  # ✅ This is optional now
 ):
-    """Dependency to get current user from JWT token with blacklist check"""
+    """Dependency to get current user from JWT token - checks both header and cookie"""
     token = None
     
-    # Try to get token from Authorization header first
-    if credentials:
+    # ✅ FIRST: Try to get token from Authorization header
+    if credentials and credentials.credentials:
         token = credentials.credentials
-    # Fallback to cookie
-    elif request and "access_token" in request.cookies:
+        print(f"🔑 Token from Authorization header: {token[:20]}...")
+    
+    # ✅ SECOND: Fallback to cookie if no header token
+    elif "access_token" in request.cookies:
         token = request.cookies.get("access_token")
+        print(f"🍪 Token from cookie: {token[:20]}...")
     
     if not token:
+        print("❌ No token found in header or cookies")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Access token required",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    payload = await verify_access_token(token)  # ✅ Add await
+    # ✅ Verify the token
+    payload = await verify_access_token(token)
     if not payload:
+        print("❌ Token verification failed")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid, expired, or blacklisted token",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    print(f"✅ User authenticated: {payload.get('id')}")
     return payload

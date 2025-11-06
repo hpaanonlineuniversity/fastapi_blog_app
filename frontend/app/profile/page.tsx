@@ -124,42 +124,56 @@ export default function PrivateProfile() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    try {
-      if (!currentUser) {
-        dispatch(updateUserFailure({ message: 'No user found' }));
-        return;
-      }
-
-      dispatch(updateUserStart());
-      const res = await apiInterceptor.request(`/api/user/update/${currentUser._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await res.json();
-
-      if (data.success === false) {
-        dispatch(updateUserFailure(data as ApiError));
-        return;
-      }
-      
-      dispatch(updateUserSuccess(data as User));
-      setUpdateSuccess(true);
-      
-      setTimeout(() => {
-        setUpdateSuccess(false);
-      }, 3000);
-      
-    } catch (error) {
-      console.log("error", error);
-      dispatch(updateUserFailure({ message: (error as Error).message }));
+// PrivateProfile component - Add debug logging
+const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  try {
+    if (!currentUser) {
+      dispatch(updateUserFailure({ message: 'No user found' }));
+      return;
     }
-  };
+
+    console.log('🔄 Making update request...');
+    console.log('👤 Current User ID:', currentUser.id);
+    console.log('📦 Form Data:', formData);
+    
+    // Check if cookies are available
+    console.log('🍪 Cookies available:', document.cookie ? 'Yes' : 'No');
+    console.log('🍪 All cookies:', document.cookie);
+
+    dispatch(updateUserStart());
+    const res = await apiInterceptor.request(`/api/user/update/${currentUser.id}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(formData),
+    });
+
+    console.log('📡 Response Status:', res.status);
+    console.log('📡 Response OK:', res.ok);
+
+    const data = await res.json();
+    console.log('📡 Response Data:', data);
+
+    if (data.success === false) {
+      dispatch(updateUserFailure(data as ApiError));
+      return;
+    }
+    
+    dispatch(updateUserSuccess(data as User));
+    setUpdateSuccess(true);
+    
+    setTimeout(() => {
+      setUpdateSuccess(false);
+    }, 3000);
+    
+  } catch (error) {
+    console.log("❌ Error:", error);
+    dispatch(updateUserFailure({ message: (error as Error).message }));
+  }
+};
 
   const clearProfilePicture = () => {
     localStorage.removeItem('profilePicture');
@@ -174,8 +188,9 @@ export default function PrivateProfile() {
     if (window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
       try {
         dispatch(deleteUserStart());
-        const res = await apiInterceptor.request(`/api/user/delete/${currentUser._id}`, {
+        const res = await apiInterceptor.request(`/api/user/delete/${currentUser.id}`, {
           method: 'DELETE',
+          credentials: 'include',
         });
         const data = await res.json();
         if (data.success === false) {
@@ -194,6 +209,7 @@ export default function PrivateProfile() {
     try {
       const response = await apiInterceptor.request('/api/auth/logout', {
         method: 'POST',
+        credentials: 'include',
       });
       console.log('Signout response status:', response.status);
       if (response.ok) {
