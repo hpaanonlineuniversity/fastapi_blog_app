@@ -3,6 +3,7 @@ export interface User {
   username: string;
   email: string;
   profilePicture?: string;
+  isAdmin: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -13,7 +14,14 @@ export interface UserState {
   error: string | null;
 }
 
+export interface UserState {
+  currentUser: User | null;
+  loading: boolean;
+  error: string | null;
+}
+
 export interface UpdateUserPayload {
+  id: string;
   username?: string;
   email?: string;
   password?: string;
