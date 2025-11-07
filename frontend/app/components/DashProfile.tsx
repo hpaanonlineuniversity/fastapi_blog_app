@@ -130,7 +130,8 @@ export default function DashProfile() {
     e.preventDefault();
     try {
       dispatch(updateUserStart());
-      const res = await apiInterceptor.request(`/api/user/update/${currentUser?.id}`, {
+      const res = await apiInterceptor.request(`/api/user/update/${currentUser.id}`, {
+      
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -171,7 +172,7 @@ export default function DashProfile() {
     if (window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
       try {
         dispatch(deleteUserStart());
-        const res = await apiInterceptor.request(`/api/user/delete/${currentUser?.id}`, {
+        const res = await apiInterceptor.request(`/api/user/delete/${currentUser.id}`, {
           method: 'DELETE',
           credentials: 'include',
         });

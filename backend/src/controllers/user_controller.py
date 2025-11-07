@@ -1,10 +1,15 @@
 # controllers/user_controller.py
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, Request
 from ..models.user_model import UserModel
 from ..schemas.user_schema import UserUpdate, UserResponse, UsersResponse, UserUpdateAdmin
 from ..utils.security import hash_password
 from ..utils.auth_dependency import get_current_user
 from datetime import datetime, timedelta
+from ..utils.security import (
+    hash_password,
+    revoke_refresh_token,
+    blacklist_token
+)
 
 class UserController:
     def __init__(self):
@@ -77,7 +82,7 @@ class UserController:
             isAdmin=updated_user.get("isAdmin", False)
         )
 
-    async def delete_user(self, user_id: str, current_user: dict):
+    async def delete_user(self, user_id: str, current_user: dict,request: Request = None):
         """Delete user"""
         # Check permissions
         if not current_user["isAdmin"] and current_user["id"] != user_id:
@@ -85,6 +90,35 @@ class UserController:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to delete this user"
             )
+        
+        try:
+            # Revoke refresh token from Redis
+            await revoke_refresh_token(user_id)
+            print(f"✅ Revoked refresh tokens for user: {user_id}")
+        except Exception as e:
+            print(f"❌ Revoke refresh token failed: {e}")
+
+        # Blacklist both tokens if we have them
+        try:
+            if access_token and access_token != "None":
+                print(f"🔍 Attempting to blacklist access token: {access_token[:20]}...")
+                success = await blacklist_token(access_token, "access", expire_seconds=15*60)
+                print(f"✅ Access token blacklist result: {success}")
+            else:
+                print("❌ No access token to blacklist")
+
+        except Exception as e:
+                print(f"❌ Blacklist access token failed: {e}")
+                    
+        try:
+            if refresh_token and refresh_token != "None":
+                print(f"🔍 Attempting to blacklist refresh token: {refresh_token[:20]}...")
+                success = await blacklist_token(refresh_token, "refresh", expire_seconds=7*24*60*60)
+                print(f"✅ Refresh token blacklist result: {success}")
+            else:
+                print("❌ No refresh token to blacklist")
+        except Exception as e:
+                print(f"❌ Blacklist refresh token failed: {e}")            
         
         success = await self.user_model.delete_user(user_id)
         if not success:
