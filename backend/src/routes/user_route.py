@@ -1,5 +1,5 @@
 # routes/user_route.py
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from ..controllers.user_controller import user_controller
 from ..schemas.user_schema import UserResponse, UsersResponse, UserUpdate, UserUpdateAdmin
 from ..utils.auth_dependency import get_current_user
@@ -23,10 +23,11 @@ async def update_user(
 @router.delete("/delete/{user_id}")
 async def delete_user(
     user_id: str,
+    request: Request,
     current_user: dict = Depends(get_current_user)
 ):
     """Delete user"""
-    return await user_controller.delete_user(user_id, current_user)
+    return await user_controller.delete_user(user_id, current_user, request)
 
 @router.get("/getusers", response_model=UsersResponse)
 async def get_users(

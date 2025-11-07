@@ -82,7 +82,7 @@ class UserController:
             isAdmin=updated_user.get("isAdmin", False)
         )
 
-    async def delete_user(self, user_id: str, current_user: dict,request: Request = None):
+    async def delete_user(self, user_id: str, current_user: dict, request: Request = None):
         """Delete user"""
         # Check permissions
         if not current_user["isAdmin"] and current_user["id"] != user_id:
@@ -92,42 +92,51 @@ class UserController:
             )
         
         try:
-            # Revoke refresh token from Redis
+            # Step 1: Revoke refresh token from Redis (ဒါက အရေးကြီးဆုံး)
             await revoke_refresh_token(user_id)
             print(f"✅ Revoked refresh tokens for user: {user_id}")
-        except Exception as e:
-            print(f"❌ Revoke refresh token failed: {e}")
 
-        # Blacklist both tokens if we have them
-        try:
-            if access_token and access_token != "None":
-                print(f"🔍 Attempting to blacklist access token: {access_token[:20]}...")
-                success = await blacklist_token(access_token, "access", expire_seconds=15*60)
-                print(f"✅ Access token blacklist result: {success}")
+            # Step 2: Try to blacklist tokens if request is available
+            if request:
+                access_token = request.cookies.get("access_token")
+                refresh_token = request.cookies.get("refresh_token")
+                
+                print(f"🔍 Token extraction - Access: {access_token is not None}, Refresh: {refresh_token is not None}")
+                
+                # Blacklist access token
+                if access_token and access_token != "None":
+                    try:
+                        print(f"🔍 Blacklisting access token: {access_token[:20]}...")
+                        await blacklist_token(access_token, "access", expire_seconds=15*60)
+                        print("✅ Access token blacklisted")
+                    except Exception as e:
+                        print(f"⚠️ Access token blacklist warning: {e}")
+                
+                # Blacklist refresh token
+                if refresh_token and refresh_token != "None":
+                    try:
+                        print(f"🔍 Blacklisting refresh token: {refresh_token[:20]}...")
+                        await blacklist_token(refresh_token, "refresh", expire_seconds=7*24*60*60)
+                        print("✅ Refresh token blacklisted")
+                    except Exception as e:
+                        print(f"⚠️ Refresh token blacklist warning: {e}")
             else:
-                print("❌ No access token to blacklist")
-
-        except Exception as e:
-                print(f"❌ Blacklist access token failed: {e}")
-                    
-        try:
-            if refresh_token and refresh_token != "None":
-                print(f"🔍 Attempting to blacklist refresh token: {refresh_token[:20]}...")
-                success = await blacklist_token(refresh_token, "refresh", expire_seconds=7*24*60*60)
-                print(f"✅ Refresh token blacklist result: {success}")
-            else:
-                print("❌ No refresh token to blacklist")
-        except Exception as e:
-                print(f"❌ Blacklist refresh token failed: {e}")            
+                print("ℹ️ No request object - skipping token blacklisting")
+            
+            # Step 3: Delete user from database
+            success = await self.user_model.delete_user(user_id)
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            
+            print(f"✅ User {user_id} successfully deleted")
+            return {"message": "User has been deleted"}
         
-        success = await self.user_model.delete_user(user_id)
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        return {"message": "User has been deleted"}
+        except Exception as e:
+            print(f"❌ Error in delete_user: {e}")
+            raise
 
     async def get_users(self, current_user: dict, start_index: int = 0, limit: int = 9, sort: str = "desc"):
         """Get all users (admin only)"""
