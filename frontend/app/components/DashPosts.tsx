@@ -47,7 +47,7 @@ export default function DashPosts() {
         ...(filterCategory && { category: filterCategory }),
       });
 
-      const res = await fetch(`/api/post/getposts?${searchParams}`);
+      const res = await apiInterceptor.request(`/api/post/getposts?${searchParams}`);
       const data = await res.json();
 
       if (!res.ok) {

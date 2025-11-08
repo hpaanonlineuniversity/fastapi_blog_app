@@ -6,6 +6,7 @@ import { useState, FormEvent, ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import OAuth from '../components/OAuth';
+import { apiInterceptor } from '../utils/apiInterceptor';
 
 interface FormData {
   username?: string;
@@ -33,7 +34,7 @@ export default function SignUp() {
     try {
       setLoading(true);
       setErrorMessage(null);
-      const res = await fetch('/api/auth/signup', {
+      const res = await apiInterceptor.request('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

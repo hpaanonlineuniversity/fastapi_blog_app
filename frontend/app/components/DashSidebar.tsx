@@ -15,6 +15,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { signOut } from '../redux/user/userSlice';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../lib/store';
+import { apiInterceptor } from "../utils/apiInterceptor";
 
 export default function DashSidebar() {
   const searchParams = useSearchParams();
@@ -32,7 +33,7 @@ export default function DashSidebar() {
 
   const handleSignOut = async () => {
     try {
-      const response = await fetch('/api/auth/logout', {
+      const response = await apiInterceptor.request('/api/auth/logout', {
         method: 'POST',
         credentials: 'include'
       });
