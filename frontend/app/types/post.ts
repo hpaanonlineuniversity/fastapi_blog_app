@@ -11,3 +11,12 @@ export interface Post {
   createdAt: string;
   updatedAt?: string;
 }
+
+export interface RecentPostsResponse {
+  posts: Post[];
+}
+
+export interface PostCardProps {
+  post?: Post;
+  loading?: boolean;
+}

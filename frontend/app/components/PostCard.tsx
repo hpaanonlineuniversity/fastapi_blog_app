@@ -4,28 +4,39 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState } from 'react';
-
-interface Post {
-  _id: string;
-  title: string;
-  content: string;
-  image: string;
-  category: string;
-  slug: string;
-  username?: string;
-  userProfilePicture?: string;
-  createdAt: string;
-}
-
-interface PostCardProps {
-  post?: Post;
-  loading?: boolean;
-}
+import { Post, PostCardProps } from '../types/post';
 
 export default function PostCard({ post, loading = false }: PostCardProps) {
   const [imageError, setImageError] = useState(false);
 
-  // Loading skeleton (same as above)
+  // Helper functions
+  const formatDate = (dateString: string): string => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  // Calculate reading time
+  const calculateReadingTime = (content: string): string => {
+    if (!content) return '1 min';
+    const textContent = content.replace(/<[^>]*>/g, '');
+    const wordCount = textContent.split(/\s+/).length;
+    const readingTime = Math.ceil(wordCount / 200);
+    return `${readingTime} min`;
+  };
+
+  // Get excerpt from content
+  const getExcerpt = (content: string, length: number = 80): string => {
+    if (!content) return '';
+    const textContent = content.replace(/<[^>]*>/g, '');
+    return textContent.length > length 
+      ? `${textContent.substring(0, length)}...` 
+      : textContent;
+  };
+
+  // Loading skeleton
   if (loading) {
     return (
       <div className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border border-gray-100 dark:border-gray-700 overflow-hidden animate-pulse">
@@ -45,8 +56,6 @@ export default function PostCard({ post, loading = false }: PostCardProps) {
 
   if (!post) return null;
 
-  // ... rest of the helper functions (same as above)
-
   return (
     <article className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:border-teal-200 dark:hover:border-teal-800 overflow-hidden hover:scale-[1.02]">
       {/* Image Container */}
@@ -64,6 +73,8 @@ export default function PostCard({ post, loading = false }: PostCardProps) {
               height={160}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               onError={() => setImageError(true)}
+              priority={false} // Use true for above-the-fold images
+              unoptimized={true} // Add this line to bypass image optimization
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-teal-50 to-blue-50 dark:from-teal-900/20 dark:to-blue-900/20 flex items-center justify-center">

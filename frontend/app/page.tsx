@@ -6,18 +6,7 @@ import CallToAction from './components/CallToAction';
 import { useEffect, useState } from 'react';
 import PostCard from './components/PostCard';
 import { apiInterceptor } from './utils/apiInterceptor'; 
-
-interface Post {
-  _id: string;
-  title: string;
-  content: string;
-  image: string;
-  category: string;
-  slug: string;
-  username: string;
-  userProfilePicture: string;
-  createdAt: string;
-}
+import { Post } from './types/post';
 
 export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
@@ -239,7 +228,7 @@ export default function Home() {
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
               {posts.slice(1, 7).map((post) => (
-                <PostCard key={post._id} post={post} />
+                <PostCard key={post.id} post={post} />
               ))}
             </div>
             
