@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import CallToAction from '../../components/CallToAction';
-//import CommentSection from '../components/CommentSection';
+import CommentSection from '../../components/CommentSection';
 import PostCard from '../../components/PostCard';
 import { apiInterceptor } from '../../utils/apiInterceptor';
 import { Post , RecentPostsResponse } from '../../types/post';
@@ -193,13 +193,13 @@ export default function PostPage() {
       {/* Call to Action Section */}
       <CallToAction />
 
-      {/* 
+      {/* Comment Section */}
       <section className='max-w-4xl mx-auto w-full mt-12 px-4'>
         <div className='border-t border-gray-200 pt-8'>
           <CommentSection postId={post.id} />
         </div>
       </section>
-      Comment Section */}
+      
 
       {/* Recent Posts Section */}
       {recentPosts && recentPosts.length > 0 && (
