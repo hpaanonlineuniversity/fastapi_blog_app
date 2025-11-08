@@ -98,7 +98,7 @@ class AuthController:
             httponly=True,
             secure=False,  # Set to True in production
             samesite="lax",
-            max_age=15 * 60  # 15 minutes
+            max_age=1 * 60  # 15 minutes
         )
         
         response.set_cookie(
@@ -160,7 +160,7 @@ class AuthController:
             httponly=True,
             secure=False,
             samesite="lax",
-            max_age=15 * 60
+            max_age=1 * 60
         )
         
         response.set_cookie(
@@ -329,7 +329,7 @@ class AuthController:
                 httponly=True,
                 secure=False,
                 samesite="lax",
-                max_age=15 * 60
+                max_age=1 * 60
             )
             
             response.set_cookie(

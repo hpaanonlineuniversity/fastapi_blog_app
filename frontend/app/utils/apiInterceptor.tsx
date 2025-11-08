@@ -75,7 +75,7 @@ class ApiInterceptor {
 
     try {
       // ✅ Silent refresh token call
-      const refreshResponse = await fetch('/api/auth/refresh-token', {
+      const refreshResponse = await fetch('/api/auth/refresh', {
         method: 'POST',
         credentials: 'include',
         headers: {
