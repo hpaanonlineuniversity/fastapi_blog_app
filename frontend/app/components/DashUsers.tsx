@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import { apiInterceptor } from '../utils/apiInterceptor';
 import { User } from '../types/user';
-import { Rootstate } from '../types/redux';
+import { RootState } from '../types/redux';
 
 export default function DashUsers() {
   const { currentUser } = useSelector((state: RootState) => state.user);
@@ -37,7 +37,7 @@ export default function DashUsers() {
     if (currentUser.isAdmin) {
       fetchUsers();
     }
-  }, [currentUser._id]);
+  }, [currentUser.id]);
 
   const handleShowMore = async () => {
     try {
@@ -72,7 +72,7 @@ export default function DashUsers() {
       }
 
       // Remove deleted user from state
-      setUsers((prev) => prev.filter((user) => user._id !== userIdToDelete));
+      setUsers((prev) => prev.filter((user) => user.id !== userIdToDelete));
       setShowModal(false);
       setUserIdToDelete('');
     } catch (error) {
@@ -99,7 +99,7 @@ export default function DashUsers() {
       if (res.ok) {
         // Update local state
         setUsers(prev => prev.map(user => 
-          user._id === userId ? { ...user, isAdmin: !currentAdminStatus } : user
+          user.id === userId ? { ...user, isAdmin: !currentAdminStatus } : user
         ));
       } else {
         console.log(data.message);
@@ -118,7 +118,7 @@ export default function DashUsers() {
             <>
               <table className='w-full text-sm text-left text-gray-500 dark:text-gray-400 shadow-md rounded-lg overflow-hidden'>
                 <thead className='text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400'>
-                  <tr key="table-header"> {/* Add key here */}
+                  <tr>
                     <th className='px-6 py-3'>Date created</th>
                     <th className='px-6 py-3'>User image</th>
                     <th className='px-6 py-3'>Username</th>
@@ -130,7 +130,7 @@ export default function DashUsers() {
                 <tbody>
                   {users.map((user) => (
                     <tr 
-                      key={user._id} 
+                      key={user.id} 
                       className='bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600'
                     >
                       <td className='px-6 py-4'>
@@ -147,24 +147,22 @@ export default function DashUsers() {
                         {user.username}
                       </td>
                       <td className='px-6 py-4'>{user.email}</td>
-
                       <td className='px-6 py-4'>
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input 
                             type="checkbox" 
                             checked={user.isAdmin}
-                            onChange={() => handleToggleAdmin(user._id, user.isAdmin)}
+                            onChange={() => handleToggleAdmin(user.id, user.isAdmin)}
                             className="sr-only peer" 
                           />
                           <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
                         </label>
                       </td>
-
                       <td className='px-6 py-4'>
                         <span
                           onClick={() => {
                             setShowModal(true);
-                            setUserIdToDelete(user._id);
+                            setUserIdToDelete(user.id);
                           }}
                           className='font-medium text-red-500 hover:underline cursor-pointer'
                         >
