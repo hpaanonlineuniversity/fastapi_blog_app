@@ -5,6 +5,8 @@ from ..schemas.post_schema import PostCreate, PostUpdate, PostResponse, PostsRes
 from ..utils.auth_dependency import get_current_user
 import re
 from datetime import datetime, timedelta
+from bson import ObjectId
+from bson.errors import InvalidId
 
 class PostController:
     def __init__(self):
@@ -83,16 +85,17 @@ class PostController:
         )
 
     async def get_posts(
-        self,
-        userId: str = None,
-        category: str = None,
-        slug: str = None,
-        postId: str = None,
-        searchTerm: str = None,
-        startIndex: int = 0,
-        limit: int = 9,
-        order: str = "desc"
-    ):
+            self,
+            userId: str = None,
+            category: str = None,
+            slug: str = None,
+            postId: str = None,
+            searchTerm: str = None,
+            startIndex: int = 0,
+            limit: int = 9,
+            order: str = "desc"
+            ):
+        
         """Get posts with filtering and pagination"""
         # Build query
         query = {}
@@ -108,18 +111,18 @@ class PostController:
         
         if postId:
             try:
+                # ObjectId conversion ကို သေချာလုပ်ပါ
                 query["_id"] = ObjectId(postId)
-            except:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid post ID"
-                )
+            except InvalidId:
+                # Invalid ID ဆိုရင် empty result ပြန်ပါ
+                return PostsResponse(posts=[], totalPosts=0, lastMonthPosts=0)
         
         if searchTerm:
             query["$or"] = [
                 {"title": {"$regex": searchTerm, "$options": "i"}},
                 {"content": {"$regex": searchTerm, "$options": "i"}}
             ]
+        
         
         # Sort direction
         sort_direction = 1 if order == "asc" else -1

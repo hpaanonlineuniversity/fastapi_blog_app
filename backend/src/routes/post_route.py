@@ -1,5 +1,6 @@
 # routes/post_route.py
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query , HTTPException
+from bson import ObjectId
 from ..controllers.post_controller import post_controller
 from ..schemas.post_schema import PostCreate, PostUpdate, PostResponse, PostsResponse
 from ..utils.auth_dependency import get_current_user
@@ -14,12 +15,13 @@ async def create_post(
     """Create a new post (Admin only)"""
     return await post_controller.create_post(post_data, current_user)
 
+
 @router.get("/getposts", response_model=PostsResponse)
 async def get_posts(
     userId: str = Query(None),
     category: str = Query(None),
     slug: str = Query(None),
-    postId: str = Query(None),
+    postId: str = Query(None),  # postId parameter ထည့်ပါ
     searchTerm: str = Query(None),
     startIndex: int = Query(0, ge=0),
     limit: int = Query(9, ge=1, le=100),
@@ -30,12 +32,22 @@ async def get_posts(
         userId=userId,
         category=category,
         slug=slug,
-        postId=postId,
+        postId=postId,  # postId ကို pass လုပ်ပါ
         searchTerm=searchTerm,
         startIndex=startIndex,
         limit=limit,
         order=order
     )
+
+# routes/post_route.py မှာ ဒီလို ထပ်ဖြည့်ပါ
+
+@router.get("/{post_id}", response_model=PostResponse)
+async def get_single_post(post_id: str):
+    """Get single post by ID"""
+    posts_response = await post_controller.get_posts(postId=post_id, limit=1)
+    if not posts_response.posts:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return posts_response.posts[0]
 
 @router.delete("/deletepost/{post_id}/{user_id}")
 async def delete_post(
