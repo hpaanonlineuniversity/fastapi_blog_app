@@ -239,9 +239,9 @@ const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         )}
         
         {error && (
-          <Alert color="failure" className="mb-6">
-            {error || 'Something went wrong!'}
-          </Alert>
+        <Alert color="failure" className="mb-6">
+          {typeof error === 'string' ? error : error.message || 'Something went wrong!'}
+        </Alert>
         )}
 
         <form onSubmit={handleSubmit}>

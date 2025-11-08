@@ -6,13 +6,19 @@ interface User {
   username: string;
   email: string;
   profilePicture?: string;
-  // Add other user fields as needed
+}
+
+interface ApiError {
+  message?: string;
+  success?: boolean;
+  statusCode?: number;
+  error?: string;
 }
 
 interface UserState {
   currentUser: User | null;
   loading: boolean;
-  error: string | false;
+  error: string | ApiError | false;  // ✅ string သို့မဟုတ် ApiError လက်ခံမယ်
 }
 
 const initialState: UserState = {
@@ -36,7 +42,7 @@ const userSlice = createSlice({
       state.loading = false;
       state.error = false;
     },
-    signInFailure: (state, action: PayloadAction<string>) => {
+    signInFailure: (state, action: PayloadAction<string | ApiError>) => {  // ✅ ဒီမှာလည်း ပြင်ပါ
       state.loading = false;
       state.error = action.payload;
     },
@@ -48,7 +54,7 @@ const userSlice = createSlice({
       state.loading = false;
       state.error = false;
     },
-    updateUserFailure: (state, action: PayloadAction<string>) => {
+    updateUserFailure: (state, action: PayloadAction<string | ApiError>) => {  // ✅ string | ApiError လက်ခံမယ်
       state.loading = false;
       state.error = action.payload;
     },
@@ -60,7 +66,7 @@ const userSlice = createSlice({
       state.loading = false;
       state.error = false;
     },
-    deleteUserFailure: (state, action: PayloadAction<string>) => {
+    deleteUserFailure: (state, action: PayloadAction<string | ApiError>) => {  // ✅ ဒီမှာလည်း ပြင်ပါ
       state.loading = false;
       state.error = action.payload;
     },
