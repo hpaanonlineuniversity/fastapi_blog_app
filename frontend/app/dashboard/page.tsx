@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DashSidebar from '../components/DashSidebar';
 import DashProfile from '../components/DashProfile';
-//import DashPosts from '../components/DashPosts';
+import DashPosts from '../components/DashPosts';
 import DashUsers from '../components/DashUsers';
 //import DashComments from '../components/DashComments';
 //import DashBoardMonitor from '../components/DashBoardMonitor';
@@ -33,6 +33,8 @@ export default function Dashboard() {
       <div className='flex-1'>
         {/* profile... */}
         {tab === 'profile' && <DashProfile />}
+        {/* posts... */}
+        {tab === 'posts' && <DashPosts />}
         {/* users */}
         {tab === 'users' && <DashUsers />}
  
