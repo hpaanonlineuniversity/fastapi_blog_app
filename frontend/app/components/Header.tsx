@@ -1,4 +1,3 @@
-// app/components/Header.tsx
 'use client';
 
 import { Avatar, Button, Dropdown, Navbar, TextInput } from 'flowbite-react';
@@ -9,17 +8,18 @@ import { FaMoon, FaSun } from 'react-icons/fa';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAppSelector, useAppDispatch } from '../hooks/redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { signOut } from '../redux/user/userSlice';
 import { toggleTheme } from '../redux/theme/themeSlice';
 import { apiInterceptor } from '../utils/apiInterceptor';
+import { RootState } from '../types/redux';
 
 const Header = () => {
-  const { currentUser } = useAppSelector((state) => state.user);
-  const { theme } = useAppSelector((state) => state.theme);
+  const { currentUser } = useSelector((state: RootState) => state.user);
+  const { theme } = useSelector((state: RootState) => state.theme);
   const router = useRouter();
   const pathname = usePathname();
-  const dispatch = useAppDispatch();
+  const dispatch = useDispatch();
 
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -32,27 +32,26 @@ const Header = () => {
     }
   }, [pathname]);
 
-const handleSignOut = async () => {
-  try {
-    
-    await apiInterceptor.request('/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include'
-    });
-  } catch (error) {
-    console.log('Signout API error:', error);
-  } finally {
-    // Always execute these steps regardless of API response
-    dispatch(signOut());
-    
-    // Clear cookies manually
-    document.cookie = "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    document.cookie = "refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    
-    // Force redirect to sign-in
-    window.location.href = '/sign-in';
-  }
-};
+  const handleSignOut = async () => {
+    try {
+      await apiInterceptor.request('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (error) {
+      console.log('Signout API error:', error);
+    } finally {
+      // Always execute these steps regardless of API response
+      dispatch(signOut());
+      
+      // Clear cookies manually
+      document.cookie = "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie = "refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      
+      // Force redirect to sign-in
+      window.location.href = '/sign-in';
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,7 +76,7 @@ const handleSignOut = async () => {
           className='self-center whitespace-nowrap text-sm sm:text-xl font-semibold dark:text-white'
         >
           <span className='px-2 py-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-lg text-white'>
-            ဘားအံ's
+            ဘားအံ&apos;s
           </span>
           Blog App
         </Link>

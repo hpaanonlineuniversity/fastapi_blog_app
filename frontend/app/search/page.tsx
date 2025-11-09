@@ -1,10 +1,10 @@
-import Dashboard from '../components/Dashboard';
+import Search from '../components/Search';
 import PrivateRoute from '../components/PrivateRoute';
 
-export default function DashboardPage() {
+export default function SearchPage() {
   return (
     <PrivateRoute>
-      <Dashboard />
+      <Search />
     </PrivateRoute>
   );
 }
