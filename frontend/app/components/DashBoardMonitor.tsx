@@ -173,7 +173,7 @@ export default function DashboardMonitor() {
             {users.length > 0 ? (
               <div className='space-y-4'>
                 {users.map((user) => (
-                  <div key={user._id} className='flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors'>
+                  <div key={user.id} className='flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors'>
                     <img
                       src={user.profilePicture}
                       alt={user.username}
@@ -217,7 +217,7 @@ export default function DashboardMonitor() {
             {posts.length > 0 ? (
               <div className='space-y-4'>
                 {posts.map((post) => (
-                  <div key={post._id} className='flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors'>
+                  <div key={post.id} className='flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors'>
                     <img
                       src={post.image}
                       alt={post.title}
@@ -262,7 +262,7 @@ export default function DashboardMonitor() {
             {comments.length > 0 ? (
               <div className='space-y-4'>
                 {comments.map((comment) => (
-                  <div key={comment._id} className='p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors'>
+                  <div key={comment.id} className='p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors'>
                     <div className='flex justify-between items-start mb-2'>
                       <p className='text-sm text-gray-600 dark:text-gray-400 line-clamp-2 flex-1 mr-2'>
                         &quot;{comment.content}&quot;
