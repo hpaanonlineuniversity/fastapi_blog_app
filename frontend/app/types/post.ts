@@ -20,3 +20,12 @@ export interface PostCardProps {
   post?: Post;
   loading?: boolean;
 }
+
+export interface PostsResponse {
+  posts: Post[];
+  totalPosts: number;
+  lastMonthPosts: number;
+  hasMore?: boolean;
+  success?: boolean;
+  message?: string;
+}

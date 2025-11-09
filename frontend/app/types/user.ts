@@ -32,3 +32,12 @@ export interface ApiError {
   message: string;
   success?: boolean;
 }
+
+export interface UsersResponse {
+  users: User[];
+  totalUsers: number;
+  lastMonthUsers: number;
+  hasMore?: boolean;
+  success?: boolean;
+  message?: string;
+}
