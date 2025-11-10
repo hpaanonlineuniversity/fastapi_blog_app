@@ -29,6 +29,7 @@ services:
       - JWT_REFRESH_EXPIRY=${JWT_REFRESH_EXPIRY}
     depends_on:
       - mongodb
+      - redis
   mongodb:
     image: mongo:noble
     environment:
@@ -68,6 +69,8 @@ services:
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     stdin_open: true
     tty: true
+    depends_on:
+      - backend
 
 volumes:
   mongo-data:
