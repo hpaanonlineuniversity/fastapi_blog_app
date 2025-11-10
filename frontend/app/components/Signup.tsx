@@ -2,12 +2,13 @@
 'use client';
 
 import { Alert, Button, Label, Spinner, TextInput, Card, Progress, Tooltip } from 'flowbite-react';
-import { useState, FormEvent, ChangeEvent } from 'react';
+import { useState, FormEvent, ChangeEvent, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import OAuth from '../components/OAuth';
 import { apiInterceptor } from '../utils/apiInterceptor';
-import { HiCheck, HiX, HiInformationCircle } from 'react-icons/hi';
+import { HiCheck, HiX, HiInformationCircle, HiExclamation } from 'react-icons/hi';
+import { debounce } from 'lodash';
 
 interface FormData {
   username?: string;
@@ -25,6 +26,11 @@ interface PasswordValidation {
   strength: 'weak' | 'medium' | 'strong';
 }
 
+interface AvailabilityCheck {
+  email: { available: boolean; checking: boolean; message?: string };
+  username: { available: boolean; checking: boolean; message?: string };
+}
+
 export default function SignUp() {
   const [formData, setFormData] = useState<FormData>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -39,7 +45,141 @@ export default function SignUp() {
     strength: 'weak'
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [availability, setAvailability] = useState<AvailabilityCheck>({
+    email: { available: false, checking: false },
+    username: { available: false, checking: false }
+  });
   const router = useRouter();
+
+  // Debounced availability check functions
+  const checkEmailAvailability = useCallback(
+    debounce(async (email: string) => {
+      if (!email || email.length < 3) {
+        setAvailability(prev => ({
+          ...prev,
+          email: { available: false, checking: false, message: 'Enter a valid email' }
+        }));
+        return;
+      }
+
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setAvailability(prev => ({
+          ...prev,
+          email: { available: false, checking: false, message: 'Please enter a valid email address' }
+        }));
+        return;
+      }
+
+      setAvailability(prev => ({
+        ...prev,
+        email: { available: false, checking: true, message: 'Checking email availability...' }
+      }));
+
+      try {
+        // Use the new dedicated endpoint
+        const res = await apiInterceptor.request(`/api/auth/check-email/${encodeURIComponent(email)}`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setAvailability(prev => ({
+            ...prev,
+            email: { 
+              available: data.available, 
+              checking: false, 
+              message: data.message
+            }
+          }));
+        } else {
+          throw new Error('Failed to check email availability');
+        }
+      } catch (error) {
+        // If endpoint doesn't exist yet, we'll do basic validation only
+        console.log('Email check endpoint not available, using basic validation');
+        setAvailability(prev => ({
+          ...prev,
+          email: { available: true, checking: false, message: 'Email format is valid' }
+        }));
+      }
+    }, 800), // Increased debounce time to reduce API calls
+    []
+  );
+
+  const checkUsernameAvailability = useCallback(
+    debounce(async (username: string) => {
+      if (!username || username.length < 3) {
+        setAvailability(prev => ({
+          ...prev,
+          username: { available: false, checking: false, message: 'Username is too short' }
+        }));
+        return;
+      }
+
+      // Username validation
+      if (username.length < 6 || username.length > 40) {
+        setAvailability(prev => ({
+          ...prev,
+          username: { available: false, checking: false, message: 'Username must be 6-40 characters' }
+        }));
+        return;
+      }
+
+      if (username !== username.toLowerCase()) {
+        setAvailability(prev => ({
+          ...prev,
+          username: { available: false, checking: false, message: 'Username must be lowercase' }
+        }));
+        return;
+      }
+
+      if (!/^[a-z0-9]+$/.test(username)) {
+        setAvailability(prev => ({
+          ...prev,
+          username: { available: false, checking: false, message: 'Username can only contain letters and numbers' }
+        }));
+        return;
+      }
+
+      setAvailability(prev => ({
+        ...prev,
+        username: { available: false, checking: true, message: 'Checking username availability...' }
+      }));
+
+      try {
+        // Use the new dedicated endpoint
+        const res = await apiInterceptor.request(`/api/auth/check-username/${encodeURIComponent(username)}`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setAvailability(prev => ({
+            ...prev,
+            username: { 
+              available: data.available, 
+              checking: false, 
+              message: data.message
+            }
+          }));
+        } else {
+          throw new Error('Failed to check username availability');
+        }
+      } catch (error) {
+        // If endpoint doesn't exist yet, we'll do basic validation only
+        console.log('Username check endpoint not available, using basic validation');
+        setAvailability(prev => ({
+          ...prev,
+          username: { available: true, checking: false, message: 'Username format is valid' }
+        }));
+      }
+    }, 800), // Increased debounce time to reduce API calls
+    []
+  );
 
   const validatePassword = (password: string): PasswordValidation => {
     const hasMinLength = password.length >= 8;
@@ -68,10 +208,15 @@ export default function SignUp() {
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
-    setFormData({ ...formData, [id]: value.trim() });
+    const trimmedValue = value.trim();
+    setFormData({ ...formData, [id]: trimmedValue });
 
     if (id === 'password') {
-      setPasswordValidation(validatePassword(value));
+      setPasswordValidation(validatePassword(trimmedValue));
+    } else if (id === 'email') {
+      checkEmailAvailability(trimmedValue);
+    } else if (id === 'username') {
+      checkUsernameAvailability(trimmedValue);
     }
   };
 
@@ -87,6 +232,25 @@ export default function SignUp() {
       return setErrorMessage('Please make sure your password meets all requirements.');
     }
 
+    // Check if username meets requirements
+    if (formData.username) {
+      if (formData.username.length < 6 || formData.username.length > 40) {
+        return setErrorMessage('Username must be between 6 and 40 characters.');
+      }
+      if (formData.username !== formData.username.toLowerCase()) {
+        return setErrorMessage('Username must be lowercase.');
+      }
+      if (!/^[a-z0-9]+$/.test(formData.username)) {
+        return setErrorMessage('Username can only contain letters and numbers.');
+      }
+    }
+
+    // Check email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      return setErrorMessage('Please enter a valid email address.');
+    }
+
     try {
       setLoading(true);
       setErrorMessage(null);
@@ -100,17 +264,22 @@ export default function SignUp() {
       
       const data = await res.json();
       
-      if (data.success === false) {
-        return setErrorMessage(data.message);
-      }
-      
-      setLoading(false);
-      
       if (res.ok) {
+        setLoading(false);
         router.push('/sign-in');
+      } else {
+        setErrorMessage(data.detail || data.message || 'Signup failed. Please try again.');
+        setLoading(false);
       }
     } catch (error: any) {
-      setErrorMessage(error.message || 'Something went wrong. Please try again.');
+      // Handle specific backend errors
+      if (error.message?.includes('Email already exists') || error.detail?.includes('Email already exists')) {
+        setErrorMessage('This email is already registered. Please use a different email.');
+      } else if (error.message?.includes('Username already exists') || error.detail?.includes('Username already exists')) {
+        setErrorMessage('This username is already taken. Please choose a different username.');
+      } else {
+        setErrorMessage(error.message || error.detail || 'Something went wrong. Please try again.');
+      }
       setLoading(false);
     }
   };
@@ -139,6 +308,52 @@ export default function SignUp() {
       {text}
     </div>
   );
+
+  const AvailabilityIndicator = ({ type }: { type: 'email' | 'username' }) => {
+    const status = availability[type];
+    
+    if (!formData[type]) return null;
+    
+    if (status.checking) {
+      return (
+        <div className="flex items-center text-sm text-blue-600 mt-1">
+          <Spinner size="sm" />
+          <span className="ml-2">{status.message}</span>
+        </div>
+      );
+    }
+    
+    if (status.message) {
+      return (
+        <div className={`flex items-center text-sm mt-1 ${
+          status.available ? 'text-green-600' : 'text-red-600'
+        }`}>
+          {status.available ? <HiCheck className="w-4 h-4 mr-2" /> : <HiExclamation className="w-4 h-4 mr-2" />}
+          <span>{status.message}</span>
+        </div>
+      );
+    }
+    
+    return null;
+  };
+
+  // Cleanup debounced functions
+  useEffect(() => {
+    return () => {
+      checkEmailAvailability.cancel();
+      checkUsernameAvailability.cancel();
+    };
+  }, [checkEmailAvailability, checkUsernameAvailability]);
+
+  const isFormValid = 
+    formData.username && 
+    formData.email && 
+    formData.password && 
+    passwordValidation.score === 5 &&
+    formData.username.length >= 6 &&
+    formData.username === formData.username.toLowerCase() &&
+    /^[a-z0-9]+$/.test(formData.username) &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email);
 
   return (
     <div className='min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4'>
@@ -194,6 +409,7 @@ export default function SignUp() {
                   required
                   shadow
                 />
+                <AvailabilityIndicator type="username" />
               </div>
               
               {/* Email Field */}
@@ -207,6 +423,7 @@ export default function SignUp() {
                   required
                   shadow
                 />
+                <AvailabilityIndicator type="email" />
               </div>
               
               {/* Password Field */}
@@ -273,7 +490,7 @@ export default function SignUp() {
               <Button
                 color="purple"
                 type='submit'
-                disabled={loading || (formData.password && passwordValidation.score < 5)}
+                disabled={loading || !isFormValid}
                 className='w-full mt-4 transition-all duration-200 hover:shadow-lg disabled:opacity-50'
                 size='lg'
               >

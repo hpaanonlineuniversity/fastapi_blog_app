@@ -1,4 +1,5 @@
 # routes/auth_route.py (Updated)
+from ..models.user_model import UserModel
 from fastapi import APIRouter, Response, Request, Cookie, Depends
 from ..controllers.auth_controller import auth_controller
 from ..schemas.user_schema import UserCreate, UserLogin, UserGoogle
@@ -129,4 +130,23 @@ async def generate_password():
     return {
         "password": strong_password,
         "validation": PasswordPolicy.validate_password(strong_password)
+    }
+
+# routes/auth_route.py - Add these new endpoints
+@router.get("/check-email/{email}")
+async def check_email_availability(email: str):
+    """Check if email is available"""
+    existing_user = await auth_controller.user_model.find_user_by_email(email)
+    return {
+        "available": not existing_user,
+        "message": "Email already exists" if existing_user else "Email is available"
+    }
+
+@router.get("/check-username/{username}")
+async def check_username_availability(username: str):
+    """Check if username is available"""
+    existing_user = await auth_controller.user_model.find_user_by_username(username)
+    return {
+        "available": not existing_user,
+        "message": "Username already exists" if existing_user else "Username is available"
     }
