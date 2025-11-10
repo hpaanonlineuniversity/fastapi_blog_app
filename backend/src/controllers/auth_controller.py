@@ -1,6 +1,7 @@
 # controllers/auth_controller.py (Correct imports)
 from fastapi import HTTPException, status, Response
 from ..models.user_model import UserModel
+from ..utils.password_policy import PasswordPolicy
 from ..schemas.user_schema import UserCreate, UserLogin, UserGoogle, UserResponse
 from ..utils.security import (
     hash_password, 
@@ -29,6 +30,15 @@ class AuthController:
                 detail="All fields are required"
             )
         
+         
+        # Additional password policy check (redundant but safe)
+        password_validation = PasswordPolicy.validate_password(user.password)
+        if not password_validation["is_valid"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Password does not meet policy: {', '.join(password_validation['errors'])}"
+            )
+               
         # Check if user already exists
         existing_user_email = await self.user_model.find_user_by_email(user.email)
         if existing_user_email:

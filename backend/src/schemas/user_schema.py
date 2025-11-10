@@ -1,12 +1,45 @@
 # schemas/user_schema.py
 from pydantic import BaseModel, EmailStr, validator
 from typing import Optional
+import re
 
-# Existing schemas...
 class UserCreate(BaseModel):
     username: str
     email: str
     password: str
+
+    @validator('password')
+    def validate_password_strength(cls, v):
+        if not v:
+            raise ValueError('Password is required')
+        
+        # Password policy rules
+        errors = []
+        
+        # Minimum length
+        if len(v) < 8:
+            errors.append('Password must be at least 8 characters long')
+        
+        # Check for uppercase letters
+        if not re.search(r'[A-Z]', v):
+            errors.append('Password must contain at least one uppercase letter')
+        
+        # Check for lowercase letters  
+        if not re.search(r'[a-z]', v):
+            errors.append('Password must contain at least one lowercase letter')
+        
+        # Check for numbers
+        if not re.search(r'\d', v):
+            errors.append('Password must contain at least one number')
+        
+        # Check for special characters
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            errors.append('Password must contain at least one special character')
+        
+        if errors:
+            raise ValueError('; '.join(errors))
+        
+        return v
 
 class UserLogin(BaseModel):
     email: str
@@ -30,7 +63,7 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ✅ New schemas for user controller
+# schemas/user_schema.py (update UserUpdate)
 class UserUpdate(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
@@ -51,9 +84,29 @@ class UserUpdate(BaseModel):
         return v
 
     @validator('password')
-    def validate_password(cls, v):
-        if v is not None and len(v) < 6:
-            raise ValueError('Password must be at least 6 characters')
+    def validate_password_update(cls, v):
+        if v is not None:
+            # Apply the same password policy for updates
+            errors = []
+            
+            if len(v) < 8:
+                errors.append('Password must be at least 8 characters long')
+            
+            if not re.search(r'[A-Z]', v):
+                errors.append('Password must contain at least one uppercase letter')
+            
+            if not re.search(r'[a-z]', v):
+                errors.append('Password must contain at least one lowercase letter')
+            
+            if not re.search(r'\d', v):
+                errors.append('Password must contain at least one number')
+            
+            if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+                errors.append('Password must contain at least one special character')
+            
+            if errors:
+                raise ValueError('; '.join(errors))
+        
         return v
 
 class UserUpdateAdmin(BaseModel):

@@ -109,3 +109,24 @@ async def logout_all(
 async def github_auth(user_data: UserGoogle, response: Response):
     """Google authentication endpoint"""
     return await auth_controller.github_auth(user_data, response)
+
+# routes/auth_route.py
+@router.post("/validate-password")
+async def validate_password(password: str):
+    """Validate password against policy"""
+    validation_result = PasswordPolicy.validate_password(password)
+    return {
+        "is_valid": validation_result["is_valid"],
+        "score": validation_result["score"],
+        "strength": validation_result["strength"],
+        "errors": validation_result["errors"]
+    }
+
+@router.get("/generate-password")
+async def generate_password():
+    """Generate a strong password"""
+    strong_password = PasswordPolicy.generate_strong_password()
+    return {
+        "password": strong_password,
+        "validation": PasswordPolicy.validate_password(strong_password)
+    }

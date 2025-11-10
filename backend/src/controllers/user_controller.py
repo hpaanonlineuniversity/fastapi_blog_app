@@ -5,6 +5,7 @@ from ..schemas.user_schema import UserUpdate, UserResponse, UsersResponse, UserU
 from ..utils.security import hash_password
 from ..utils.auth_dependency import get_current_user
 from datetime import datetime, timedelta
+from ..utils.password_policy import PasswordPolicy
 from ..utils.security import (
     hash_password,
     revoke_refresh_token,
@@ -29,6 +30,19 @@ class UserController:
             )
         
         update_dict = {}
+
+    
+        """Update user with password policy validation"""
+        # If password is being updated, validate it
+        if update_data.password:
+            password_validation = PasswordPolicy.validate_password(update_data.password)
+            if not password_validation["is_valid"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"New password does not meet policy: {', '.join(password_validation['errors'])}"
+                )
+            
+            update_dict["password"] = hash_password(update_data.password)
         
         # Validate and prepare update data
         if update_data.username:
@@ -51,8 +65,7 @@ class UserController:
                 )
             update_dict["email"] = update_data.email
         
-        if update_data.password:
-            update_dict["password"] = hash_password(update_data.password)
+            
         
         if update_data.profilePicture:
             update_dict["profilePicture"] = update_data.profilePicture
