@@ -1,8 +1,7 @@
-# controllers/post_controller.py
+# controllers/post_controller.py (CSRF Compatible Version)
 from fastapi import HTTPException, status
 from ..models.post_model import PostModel
 from ..schemas.post_schema import PostCreate, PostUpdate, PostResponse, PostsResponse
-from ..utils.auth_dependency import get_current_user
 import re
 from datetime import datetime, timedelta
 from bson import ObjectId
@@ -14,7 +13,6 @@ class PostController:
 
     def _generate_slug(self, title: str) -> str:
         """Generate slug from title"""
-        # Fix: Python string operations are different from JavaScript
         slug = title.replace(' ', '-').lower()
         slug = re.sub(r'[^a-zA-Z0-9-]', '', slug)
         return slug
@@ -22,7 +20,7 @@ class PostController:
     async def create_post(self, post_data: PostCreate, current_user: dict):
         """Create a new post (Admin only)"""
         # Check if user is admin
-        if not current_user["isAdmin"]:
+        if not current_user.get("isAdmin", False):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to create a post"
@@ -58,7 +56,9 @@ class PostController:
             "content": post_data.content,
             "image": post_data.image or "https://www.hostinger.com/tutorials/wp-content/uploads/sites/2/2021/09/how-to-write-a-blog-post.png",
             "category": post_data.category or "uncategorized",
-            "slug": slug
+            "slug": slug,
+            "createdAt": datetime.now(),
+            "updatedAt": datetime.now()
         }
         
         # Save post
@@ -85,17 +85,17 @@ class PostController:
         )
 
     async def get_posts(
-            self,
-            userId: str = None,
-            category: str = None,
-            slug: str = None,
-            postId: str = None,
-            searchTerm: str = None,
-            startIndex: int = 0,
-            limit: int = 9,
-            order: str = "desc"
-            ):
-        
+        self,
+        userId: str = None,
+        category: str = None,
+        slug: str = None,
+        postId: str = None,
+        searchTerm: str = None,
+        startIndex: int = 0,
+        limit: int = 9,
+        order: str = "desc",
+        current_user: dict = None  # ✅ Added current_user parameter
+    ):
         """Get posts with filtering and pagination"""
         # Build query
         query = {}
@@ -111,10 +111,8 @@ class PostController:
         
         if postId:
             try:
-                # ObjectId conversion ကို သေချာလုပ်ပါ
                 query["_id"] = ObjectId(postId)
             except InvalidId:
-                # Invalid ID ဆိုရင် empty result ပြန်ပါ
                 return PostsResponse(posts=[], totalPosts=0, lastMonthPosts=0)
         
         if searchTerm:
@@ -123,6 +121,10 @@ class PostController:
                 {"content": {"$regex": searchTerm, "$options": "i"}}
             ]
         
+        # ✅ NEW: If not authenticated, only return published posts
+        # (You can add a 'published' field to your posts if needed)
+        # if not current_user:
+        #     query["published"] = True
         
         # Sort direction
         sort_direction = 1 if order == "asc" else -1
@@ -151,13 +153,13 @@ class PostController:
             ))
         
         # Get counts
-        total_posts = await self.post_model.count_posts()
+        total_posts = await self.post_model.count_posts(query)  # ✅ Use same query for accurate count
         
         # Last month posts count
         one_month_ago = datetime.now() - timedelta(days=30)
-        last_month_posts = await self.post_model.count_posts({
-            "createdAt": {"$gte": one_month_ago}
-        })
+        last_month_query = query.copy()  # ✅ Copy base query
+        last_month_query["createdAt"] = {"$gte": one_month_ago}
+        last_month_posts = await self.post_model.count_posts(last_month_query)
         
         return PostsResponse(
             posts=posts_response,
@@ -168,7 +170,7 @@ class PostController:
     async def delete_post(self, post_id: str, user_id: str, current_user: dict):
         """Delete a post"""
         # Check permissions
-        if not current_user["isAdmin"] and current_user["id"] != user_id:
+        if not current_user.get("isAdmin", False) and current_user["id"] != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to delete this post"
@@ -183,7 +185,7 @@ class PostController:
             )
         
         # Verify post belongs to user (if not admin)
-        if not current_user["isAdmin"] and post["userId"] != current_user["id"]:
+        if not current_user.get("isAdmin", False) and post["userId"] != current_user["id"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to delete this post"
@@ -208,7 +210,7 @@ class PostController:
     ):
         """Update a post"""
         # Check permissions
-        if not current_user["isAdmin"] and current_user["id"] != user_id:
+        if not current_user.get("isAdmin", False) and current_user["id"] != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to update this post"
@@ -223,7 +225,7 @@ class PostController:
             )
         
         # Verify post belongs to user (if not admin)
-        if not current_user["isAdmin"] and post["userId"] != current_user["id"]:
+        if not current_user.get("isAdmin", False) and post["userId"] != current_user["id"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to update this post"
@@ -256,8 +258,11 @@ class PostController:
         if update_data.image is not None:
             update_dict["image"] = update_data.image
         
+        # Add updated timestamp
+        update_dict["updatedAt"] = datetime.now()
+        
         # Update post
-        if update_dict:  # Only update if there are changes
+        if update_dict:
             success = await self.post_model.update_post(post_id, update_dict)
             if not success:
                 raise HTTPException(

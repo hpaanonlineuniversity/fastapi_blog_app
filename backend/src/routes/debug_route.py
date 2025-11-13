@@ -1,4 +1,6 @@
 # routes/debug_route.py (Create new file)
+## ဒီ debug endpoints တွေက development အတွက်ပဲသုံးတာဖြစ်ပြီး production မှာ disable လုပ်ရမှာပါ
+
 from fastapi import APIRouter
 from ..configs.redis_client import redis_client
 

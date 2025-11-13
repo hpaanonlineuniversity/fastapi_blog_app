@@ -1,8 +1,7 @@
-# controllers/comment_controller.py
+# controllers/comment_controller.py (CSRF Compatible Version)
 from fastapi import HTTPException, status
 from ..models.comment_model import CommentModel
 from ..schemas.comment_schema import CommentCreate, CommentUpdate, CommentResponse, CommentsResponse
-from ..utils.auth_dependency import get_current_user
 from datetime import datetime, timedelta
 
 class CommentController:
@@ -11,11 +10,25 @@ class CommentController:
 
     async def create_comment(self, comment_data: CommentCreate, current_user: dict):
         """Create a new comment"""
+        # Validate current_user exists (CSRF protection ensures this)
+        if not current_user or "id" not in current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required"
+            )
+        
         # Check if user is creating comment for themselves
         if comment_data.userId != current_user["id"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to create this comment"
+            )
+        
+        # Validate required fields
+        if not comment_data.content or not comment_data.postId:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Content and postId are required"
             )
         
         # Create comment data
@@ -24,7 +37,9 @@ class CommentController:
             "postId": comment_data.postId,
             "userId": comment_data.userId,
             "likes": [],
-            "numberOfLikes": 0
+            "numberOfLikes": 0,
+            "createdAt": datetime.now(),
+            "updatedAt": datetime.now()
         }
         
         # Save comment
@@ -49,8 +64,14 @@ class CommentController:
             updatedAt=new_comment.get("updatedAt")
         )
 
-    async def get_post_comments(self, post_id: str):
+    async def get_post_comments(self, post_id: str, current_user: dict = None):
         """Get comments for a specific post"""
+        if not post_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Post ID is required"
+            )
+        
         comments = await self.comment_model.get_comments_by_post_id(post_id, sort_direction=-1)
         
         comments_response = []
@@ -70,6 +91,13 @@ class CommentController:
 
     async def like_comment(self, comment_id: str, current_user: dict):
         """Like or unlike a comment"""
+        # Validate current_user exists (CSRF protection ensures this)
+        if not current_user or "id" not in current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required"
+            )
+        
         comment = await self.comment_model.find_comment_by_id(comment_id)
         if not comment:
             raise HTTPException(
@@ -93,7 +121,8 @@ class CommentController:
         # Update comment
         success = await self.comment_model.update_comment(comment_id, {
             "likes": likes,
-            "numberOfLikes": number_of_likes
+            "numberOfLikes": number_of_likes,
+            "updatedAt": datetime.now()
         })
         
         if not success:
@@ -117,6 +146,13 @@ class CommentController:
 
     async def edit_comment(self, comment_id: str, update_data: CommentUpdate, current_user: dict):
         """Edit a comment"""
+        # Validate current_user exists (CSRF protection ensures this)
+        if not current_user or "id" not in current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required"
+            )
+        
         comment = await self.comment_model.find_comment_by_id(comment_id)
         if not comment:
             raise HTTPException(
@@ -125,15 +161,23 @@ class CommentController:
             )
         
         # Check permissions
-        if comment["userId"] != current_user["id"] and not current_user["isAdmin"]:
+        if comment["userId"] != current_user["id"] and not current_user.get("isAdmin", False):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to edit this comment"
             )
         
+        # Validate content
+        if not update_data.content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Comment content cannot be empty"
+            )
+        
         # Update comment content
         success = await self.comment_model.update_comment(comment_id, {
-            "content": update_data.content
+            "content": update_data.content,
+            "updatedAt": datetime.now()
         })
         
         if not success:
@@ -157,6 +201,13 @@ class CommentController:
 
     async def delete_comment(self, comment_id: str, current_user: dict):
         """Delete a comment"""
+        # Validate current_user exists (CSRF protection ensures this)
+        if not current_user or "id" not in current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required"
+            )
+        
         comment = await self.comment_model.find_comment_by_id(comment_id)
         if not comment:
             raise HTTPException(
@@ -165,7 +216,7 @@ class CommentController:
             )
         
         # Check permissions
-        if comment["userId"] != current_user["id"] and not current_user["isAdmin"]:
+        if comment["userId"] != current_user["id"] and not current_user.get("isAdmin", False):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to delete this comment"
@@ -182,19 +233,26 @@ class CommentController:
 
     async def get_comments(
         self, 
-        current_user: dict, 
+        current_user: dict = None, 
         start_index: int = 0, 
         limit: int = 9, 
         sort: str = "desc"
     ):
-        """Get all comments (admin only)"""
-        if not current_user["isAdmin"]:
+        """Get all comments (admin only for full access)"""
+        sort_direction = -1 if sort == "desc" else 1
+        
+        # ✅ If no current_user (public access), apply limitations
+        if not current_user:
+            # Public access - limit results and apply filters if needed
+            limit = min(limit, 50)  # Limit public access to 50 comments
+            # You can add additional filters for public access here
+        
+        # ✅ If user is not admin, restrict access
+        elif not current_user.get("isAdmin", False):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to get all comments"
             )
-        
-        sort_direction = -1 if sort == "desc" else 1
         
         # Get comments
         comments = await self.comment_model.get_all_comments(

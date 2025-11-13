@@ -1,4 +1,4 @@
-# controllers/auth_controller.py (Correct imports)
+# controllers/auth_controller.py (CSRF Error Fixed)
 from fastapi import HTTPException, status, Response
 from ..models.user_model import UserModel
 from ..utils.password_policy import PasswordPolicy
@@ -6,14 +6,14 @@ from ..schemas.user_schema import UserCreate, UserLogin, UserGoogle, UserRespons
 from ..utils.security import (
     hash_password, 
     verify_password, 
-    create_access_token,  # ✅ This should work now
+    create_access_token,
     create_refresh_token,
     verify_refresh_token,
     revoke_refresh_token,
     revoke_all_user_tokens,
-    blacklist_token,  # ✅ Add this
-    blacklist_user_tokens  # ✅ Add this
+    blacklist_token
 )
+from ..utils.csrf_security import csrf_protection
 import random
 import string
 
@@ -30,8 +30,7 @@ class AuthController:
                 detail="All fields are required"
             )
         
-         
-        # Additional password policy check (redundant but safe)
+        # Additional password policy check
         password_validation = PasswordPolicy.validate_password(user.password)
         if not password_validation["is_valid"]:
             raise HTTPException(
@@ -71,9 +70,8 @@ class AuthController:
         
         return {"message": "Signup successful", "userId": user_id}
 
-        # controllers/auth_controller.py (Updated - Remove tokens from response)
     async def signin(self, user: UserLogin, response: Response):
-        """Handle user login with refresh tokens - Cookies only"""
+        """Handle user login with refresh tokens and CSRF"""
         if not user.email or not user.password:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -101,26 +99,39 @@ class AuthController:
         access_token = create_access_token(user_id, db_user.get("isAdmin", False))
         refresh_token = await create_refresh_token(user_id)
         
-        # Set HTTP-only cookies ONLY (no tokens in response)
+        # ✅ CSRF token ဖန်တီးမယ်
+        csrf_token = await csrf_protection.generate_csrf_token(user_id)
+        
+        # Set HTTP-only cookies
         response.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
-            secure=False,  # Set to True in production
+            secure=False,
             samesite="lax",
-            max_age=15 * 60  # 15 minutes
+            max_age=15 * 60
         )
         
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=False,  # Set to True in production
+            secure=False,
             samesite="lax",
-            max_age=7 * 24 * 60 * 60  # 7 days
+            max_age=7 * 24 * 60 * 60
         )
         
-        # Prepare user response (NO tokens in response)
+        # ✅ CSRF token ကို cookie (non-httpOnly) အဖြစ်ထည့်မယ်
+        response.set_cookie(
+            key="csrf_token",
+            value=csrf_token,
+            httponly=False,
+            secure=False,
+            samesite="lax",
+            max_age=15 * 60
+        )
+        
+        # Prepare user response
         user_response = UserResponse(
             id=user_id,
             username=db_user["username"],
@@ -131,20 +142,19 @@ class AuthController:
         
         return {
             "message": "Login successful",
-            "user": user_response.model_dump()
-            # ✅ No access_token or refresh_token in response
+            "user": user_response.model_dump(),
+            "csrfToken": csrf_token
         }
-    
 
     async def refresh_tokens(self, refresh_token: str, response: Response):
-        """Refresh access token using refresh token - Cookies only"""
+        """Refresh access token using refresh token"""
         if not refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Refresh token required"
             )
         
-        payload = await verify_refresh_token(refresh_token)  # ✅ Add await
+        payload = await verify_refresh_token(refresh_token)
         if not payload:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -161,9 +171,12 @@ class AuthController:
         
         # Create new tokens
         new_access_token = create_access_token(user_id, user.get("isAdmin", False))
-        new_refresh_token = await create_refresh_token(user_id)  # ✅ Add await
+        new_refresh_token = await create_refresh_token(user_id)
         
-        # Set new cookies ONLY (no tokens in response)
+        # ✅ New CSRF token ပါထုတ်ပေးမယ်
+        new_csrf_token = await csrf_protection.generate_csrf_token(user_id)
+        
+        # Set new cookies
         response.set_cookie(
             key="access_token",
             value=new_access_token,
@@ -182,16 +195,23 @@ class AuthController:
             max_age=7 * 24 * 60 * 60
         )
         
+        # ✅ CSRF cookie ကိုပါ update လုပ်မယ်
+        response.set_cookie(
+            key="csrf_token",
+            value=new_csrf_token,
+            httponly=False,
+            secure=False,
+            samesite="lax",
+            max_age=7 * 24 * 60 * 60
+        )
+        
         return {
-            "message": "Tokens refreshed successfully"
-            # ✅ No tokens in response
-        }                       
-
-    # controllers/auth_controller.py - logout function ကို update
+            "message": "Tokens refreshed successfully",
+            "csrfToken": new_csrf_token
+        }
 
     async def logout(self, user_id: str, access_token: str, refresh_token: str, response: Response):
         """Logout user - handle all cases safely"""
-        
         print(f"🔍 LOGOUT DEBUG - user_id: {user_id}, access_token: {access_token is not None}, refresh_token: {refresh_token is not None}")
         
         try:
@@ -206,24 +226,29 @@ class AuthController:
                 except Exception as e:
                     print(f"❌ Revoke refresh token failed: {e}")
                 
+                # ✅ CSRF tokens အားလုံးကိုဖျက်မယ် (with error handling)
+                try:
+                    csrf_success = await csrf_protection.revoke_user_csrf_tokens(user_id)
+                    if csrf_success:
+                        print(f"✅ Revoked CSRF tokens for user: {user_id}")
+                    else:
+                        print(f"⚠️ No CSRF tokens found for user: {user_id}")
+                except Exception as e:
+                    print(f"❌ Revoke CSRF tokens failed: {e}")
+                    # Continue with logout even if CSRF revocation fails
+                
                 # Blacklist both tokens if we have them
                 try:
                     if access_token and access_token != "None":
-                        print(f"🔍 Attempting to blacklist access token: {access_token[:20]}...")
                         success = await blacklist_token(access_token, "access", expire_seconds=15*60)
                         print(f"✅ Access token blacklist result: {success}")
-                    else:
-                        print("❌ No access token to blacklist")
                 except Exception as e:
                     print(f"❌ Blacklist access token failed: {e}")
                     
                 try:
                     if refresh_token and refresh_token != "None":
-                        print(f"🔍 Attempting to blacklist refresh token: {refresh_token[:20]}...")
                         success = await blacklist_token(refresh_token, "refresh", expire_seconds=7*24*60*60)
                         print(f"✅ Refresh token blacklist result: {success}")
-                    else:
-                        print("❌ No refresh token to blacklist")
                 except Exception as e:
                     print(f"❌ Blacklist refresh token failed: {e}")
             else:
@@ -232,23 +257,28 @@ class AuthController:
             # Always clear cookies regardless of authentication status
             response.delete_cookie("access_token")
             response.delete_cookie("refresh_token")
+            response.delete_cookie("csrf_token")
             
-            print("✅ Cookies cleared successfully")
+            print("✅ All cookies cleared successfully")
             return {"message": "Logged out successfully"}
             
         except Exception as e:
             print(f"❌ Logout error: {e}")
+            import traceback
+            print(traceback.format_exc())
             # Even if there's an error, clear cookies
             response.delete_cookie("access_token") 
             response.delete_cookie("refresh_token")
-            return {"message": "Logged out successfully"}  
+            response.delete_cookie("csrf_token")
+            return {"message": "Logged out successfully"}
 
-
-    # controllers/auth_controller.py (Simple approach)
     async def logout_all_devices(self, user_id: str, access_token: str, response: Response):
         """Logout user from all devices and blacklist current tokens"""
-        # Revoke all refresh tokens for user (this prevents new access tokens)
+        # Revoke all refresh tokens for user
         await revoke_all_user_tokens(user_id)
+        
+        # ✅ CSRF tokens အားလုံးကိုဖျက်မယ်
+        await csrf_protection.revoke_user_csrf_tokens(user_id)
         
         # Blacklist the current access token (if provided)
         if access_token:
@@ -258,14 +288,14 @@ class AuthController:
         # Clear cookies
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
+        response.delete_cookie("csrf_token")
         
         return {"message": "Logged out from all devices successfully"}
 
-    # controllers/auth_controller.py - UPDATED github_auth method
     async def github_auth(self, user_data: UserGoogle, response: Response):
-        """Handle GitHub authentication with better duplicate checking"""
+        """Handle GitHub authentication"""
         try:
-            # ✅ FIRST: Check if user exists with this email
+            # Check if user exists with this email
             db_user = await self.user_model.find_user_by_email(user_data.email)
             
             if db_user:
@@ -273,6 +303,9 @@ class AuthController:
                 # User exists - login
                 access_token = create_access_token(str(db_user["_id"]), db_user.get("isAdmin", False))
                 refresh_token = await create_refresh_token(str(db_user["_id"]))
+                
+                # ✅ CSRF token ဖန်တီးမယ်
+                csrf_token = await csrf_protection.generate_csrf_token(str(db_user["_id"]))
                 
                 user_response = UserResponse(
                     id=str(db_user["_id"]),
@@ -287,16 +320,15 @@ class AuthController:
                 generated_password = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
                 hashed_password = hash_password(generated_password)
                 
-                # ✅ BETTER username generation with retry logic
+                # Username generation with retry logic
                 base_username = user_data.name.lower().replace(" ", "").replace(".", "")[:15]
                 username = base_username
                 counter = 1
                 
-                # Check if username already exists and generate unique one
                 while await self.user_model.find_user_by_username(username):
                     username = f"{base_username}{counter}"
                     counter += 1
-                    if counter > 100:  # Safety limit
+                    if counter > 100:
                         raise HTTPException(
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="Could not generate unique username"
@@ -311,8 +343,6 @@ class AuthController:
                 }
                 
                 user_id = await self.user_model.create_user(new_user_data)
-                
-                # Get the created user
                 db_user = await self.user_model.find_user_by_id(user_id)
                 
                 if not db_user:
@@ -323,6 +353,7 @@ class AuthController:
                 
                 access_token = create_access_token(str(db_user["_id"]), db_user.get("isAdmin", False))
                 refresh_token = await create_refresh_token(str(db_user["_id"]))
+                csrf_token = await csrf_protection.generate_csrf_token(str(db_user["_id"]))
                 
                 user_response = UserResponse(
                     id=str(db_user["_id"]),
@@ -332,7 +363,7 @@ class AuthController:
                     isAdmin=db_user.get("isAdmin", False)
                 )
             
-            # Set cookies ONLY (no tokens in response)
+            # Set cookies
             response.set_cookie(
                 key="access_token",
                 value=access_token,
@@ -351,9 +382,19 @@ class AuthController:
                 max_age=7 * 24 * 60 * 60
             )
             
+            response.set_cookie(
+                key="csrf_token",
+                value=csrf_token,
+                httponly=False,
+                secure=False,
+                samesite="lax",
+                max_age=15 * 60
+            )
+            
             return {
                 "message": "GitHub authentication successful",
-                "user": user_response.model_dump()
+                "user": user_response.model_dump(),
+                "csrfToken": csrf_token
             }
             
         except HTTPException:
@@ -364,6 +405,11 @@ class AuthController:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"GitHub authentication failed: {str(e)}"
             )
+
+    async def get_csrf_token(self, user_id: str):
+        """Get new CSRF token"""
+        csrf_token = await csrf_protection.generate_csrf_token(user_id)
+        return {"csrfToken": csrf_token}
 
 # Create controller instance
 auth_controller = AuthController()

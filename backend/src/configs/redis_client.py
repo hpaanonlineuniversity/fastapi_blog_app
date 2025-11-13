@@ -1,4 +1,4 @@
-# configs/redis_client.py (Updated)
+# configs/redis_client.py (Updated with delete_pattern)
 import redis.asyncio as redis
 import json
 from .config import REDIS_URL
@@ -93,6 +93,26 @@ class RedisClient:
         except Exception as e:
             print(f"❌ Error getting Redis keys: {e}")
             return []
+    
+    # ✅ NEW: Add delete_pattern method
+    async def delete_pattern(self, pattern: str):
+        """Delete all keys matching pattern"""
+        try:
+            if self.redis_client is None:
+                print("❌ Redis client not connected")
+                return False
+                
+            keys = await self.redis_client.keys(pattern)
+            if keys:
+                deleted_count = await self.redis_client.delete(*keys)
+                print(f"✅ Redis DELETE PATTERN: {pattern} - Deleted {deleted_count} keys")
+                return deleted_count > 0
+            else:
+                print(f"ℹ️ No keys found for pattern: {pattern}")
+                return True
+        except Exception as e:
+            print(f"❌ Error deleting Redis pattern {pattern}: {e}")
+            return False
 
 # Global Redis client instance
 redis_client = RedisClient()

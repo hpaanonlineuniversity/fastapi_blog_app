@@ -1,9 +1,10 @@
-# routes/auth_route.py (Updated)
-from ..models.user_model import UserModel
-from fastapi import APIRouter, Response, Request, Cookie, Depends
+# routes/auth_route.py (Full Updated Version with CSRF)
+from fastapi import APIRouter, Response, Request, Cookie, Depends, Header
 from ..controllers.auth_controller import auth_controller
 from ..schemas.user_schema import UserCreate, UserLogin, UserGoogle
 from ..utils.auth_dependency import get_current_user
+from ..utils.csrf_dependency import verify_csrf_token, get_csrf_token
+from ..utils.password_policy import PasswordPolicy
 
 router = APIRouter()
 
@@ -24,8 +25,6 @@ async def refresh_tokens(
 ):
     """Refresh access token"""
     return await auth_controller.refresh_tokens(refresh_token, response)
-
-# routes/auth_route.py - logout route ကို update
 
 @router.post("/logout")
 async def logout(
@@ -54,8 +53,7 @@ async def logout(
         user_id = None
         if access_token:
             try:
-                # Use your existing token verification function
-                from ..utils.security import verify_access_token  # Use the async function
+                from ..utils.security import verify_access_token
                 payload = await verify_access_token(access_token)
                 if payload and "id" in payload:
                     user_id = payload.get("id")
@@ -64,7 +62,6 @@ async def logout(
                     print("❌ Could not extract user_id from token")
             except Exception as e:
                 print(f"❌ Token verification failed: {e}")
-                # Continue with logout even if token is invalid
         
         print(f"🔍 FINAL - user_id: {user_id}, access_token: {access_token is not None}")
         
@@ -82,14 +79,14 @@ async def logout(
         # Even if there's an error, clear cookies
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
+        response.delete_cookie("csrf_token")  # ✅ CSRF cookie ပါဖျက်မယ်
         return {"message": "Logged out successfully"}
 
-# routes/auth_route.py (Simple approach)
 @router.post("/logout-all")
 async def logout_all(
-    request: Request,  # ✅ Add Request parameter
+    request: Request,
     response: Response,
-    ##current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(verify_csrf_token)  # ✅ CSRF protection
 ):
     """Logout user from all devices"""
     # Get current access token to blacklist it
@@ -102,16 +99,15 @@ async def logout_all(
     
     return await auth_controller.logout_all_devices(
         current_user["id"], 
-        access_token,  # ✅ Pass access token to blacklist
+        access_token,
         response
     )
 
 @router.post("/github", response_model=dict)
 async def github_auth(user_data: UserGoogle, response: Response):
-    """Google authentication endpoint"""
+    """GitHub authentication endpoint"""
     return await auth_controller.github_auth(user_data, response)
 
-# routes/auth_route.py
 @router.post("/validate-password")
 async def validate_password(password: str):
     """Validate password against policy"""
@@ -132,7 +128,6 @@ async def generate_password():
         "validation": PasswordPolicy.validate_password(strong_password)
     }
 
-# routes/auth_route.py - Add these new endpoints
 @router.get("/check-email/{email}")
 async def check_email_availability(email: str):
     """Check if email is available"""
@@ -149,4 +144,22 @@ async def check_username_availability(username: str):
     return {
         "available": not existing_user,
         "message": "Username already exists" if existing_user else "Username is available"
+    }
+
+# ✅ CSRF token related endpoints
+@router.get("/csrf-token")
+async def get_csrf_token_endpoint(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get new CSRF token"""
+    return await auth_controller.get_csrf_token(current_user["id"])
+
+@router.post("/verify-csrf")
+async def verify_csrf_token_endpoint(
+    current_user: dict = Depends(verify_csrf_token)  # ✅ This will verify CSRF token
+):
+    """Verify CSRF token (for testing)"""
+    return {
+        "message": "CSRF token is valid",
+        "user_id": current_user["id"]
     }
