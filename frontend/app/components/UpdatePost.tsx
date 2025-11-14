@@ -15,17 +15,15 @@ import { useState, useRef, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRouter, useParams } from 'next/navigation';
 import { apiInterceptor } from '../utils/apiInterceptor';
-
 import { FormData } from '../types/form';
 import { RootState } from '../types/redux';
 import { Post } from '../types/post';
-
 
 export default function UpdatePost() {
   const router = useRouter();
   const params = useParams();
   const postId = params.postId as string;
-  const { currentUser } = useSelector((state: RootState) => state.user);
+  const { currentUser, csrfToken } = useSelector((state: RootState) => state.user);
   const [loading, setLoading] = useState<boolean>(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -35,6 +33,7 @@ export default function UpdatePost() {
   const dispatch = useDispatch();
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
+  const [freshCsrfToken, setFreshCsrfToken] = useState<string | null>(null);
 
   // Initialize formData state
   const [formData, setFormData] = useState<FormData>({
@@ -44,54 +43,121 @@ export default function UpdatePost() {
     image: ''
   });
 
+  // ✅ CSRF Token Initialization - Use Redux token first
+  useEffect(() => {
+    let isMounted = true;
 
-    // Fetch post data on component mount
-    useEffect(() => {
+    const initializeCsrfToken = async () => {
+      if (currentUser) {
+        if (csrfToken) {
+          // ✅ Use existing token from Redux store
+          console.log('✅ Using CSRF token from Redux store for UpdatePost');
+          if (isMounted) {
+            setFreshCsrfToken(csrfToken);
+          }
+        } else {
+          // ✅ Only fetch new token if not available in Redux
+          try {
+            console.log('🔄 Fetching CSRF token for UpdatePost...');
+            const res = await apiInterceptor.request('/api/auth/csrf-token', {
+              method: 'GET',
+              credentials: 'include',
+            });
+            
+            if (res.ok && isMounted) {
+              const data = await res.json();
+              if (data.csrfToken) {
+                console.log('✅ New CSRF token received for UpdatePost:', data.csrfToken);
+                setFreshCsrfToken(data.csrfToken);
+                
+                dispatch({
+                  type: 'user/setCsrfToken',
+                  payload: data.csrfToken
+                });
+              }
+            }
+          } catch (error) {
+            console.error('Error getting CSRF token for UpdatePost:', error);
+          }
+        }
+      }
+    };
+
+    initializeCsrfToken();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, csrfToken, dispatch]);
+
+  // Fetch post data on component mount
+  useEffect(() => {
     const fetchPost = async () => {
-        try {
+      try {
         setLoading(true);
         setPublishError(null);
         
-        const res = await apiInterceptor.request(`/api/post/getposts?postId=${postId}`);
+        // ✅ Add CSRF token to GET request if available
+        const headers: Record<string, string> = {};
+        const currentCsrfToken = csrfToken || freshCsrfToken;
+        
+        if (currentCsrfToken) {
+          headers['X-CSRF-Token'] = currentCsrfToken;
+          console.log('🔄 Fetching post with CSRF token');
+        }
+
+        const res = await apiInterceptor.request(`/api/post/getposts?postId=${postId}`, {
+          method: 'GET',
+          headers,
+          credentials: 'include'
+        });
         
         if (!res.ok) {
-            // Response မကောင်းရင် error message ကို ကြိုးစားဖတ်ပါ
-            const errorData = await res.json().catch(() => ({ message: 'Failed to fetch post' }));
-            throw new Error(errorData.message || 'Failed to fetch post');
+          const errorData = await res.json().catch(() => ({ message: 'Failed to fetch post' }));
+          throw new Error(errorData.message || 'Failed to fetch post');
         }
         
         const data = await res.json();
         
         if (!data.posts || data.posts.length === 0) {
-            throw new Error('Post not found');
+          throw new Error('Post not found');
         }
 
         const post = data.posts[0];
+        
+        // Check if current user is the author
+        if (post.userId !== currentUser?.id) {
+          throw new Error('You are not authorized to edit this post');
+        }
+
         setFormData({
-            title: post.title || '',
-            category: post.category || 'uncategorized',
-            content: post.content || '',
-            image: post.image || ''
+          title: post.title || '',
+          category: post.category || 'uncategorized',
+          content: post.content || '',
+          image: post.image || ''
         });
         
         if (post.image) {
-            setImagePreview(post.image);
+          setImagePreview(post.image);
         }
-        } catch (error) {
+      } catch (error) {
         console.error('Error fetching post:', error);
         setPublishError((error as Error).message);
-        } finally {
+      } finally {
         setLoading(false);
-        }
+      }
     };
 
-    if (postId) {
-        fetchPost();
+    if (postId && currentUser) {
+      fetchPost();
     }
-    }, [postId]);
+  }, [postId, currentUser, csrfToken, freshCsrfToken]);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.id]: e.target.value });
+    if (publishError) {
+      setPublishError(null);
+    }
   };
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -154,19 +220,19 @@ export default function UpdatePost() {
           console.log('Post image saved to local storage successfully');
         } catch (error) {
           console.error('Error processing file:', (error as Error).message);
-          alert('Error saving post image: ' + (error as Error).message);
+          setPublishError('Error saving post image: ' + (error as Error).message);
         }
       };
 
       reader.onerror = (error) => {
         console.error('File reading error:', error);
-        alert('Error reading file');
+        setPublishError('Error reading file');
       };
 
       reader.readAsDataURL(image);
     } catch (error) {
       console.error('Error uploading file:', (error as Error).message);
-      alert((error as Error).message);
+      setPublishError((error as Error).message);
     }
   };
 
@@ -185,6 +251,12 @@ export default function UpdatePost() {
     setPublishError(null);
     setPublishSuccess(null);
 
+    if (!currentUser) {
+      setPublishError('Please sign in to update post');
+      router.push('/sign-in?redirect=/update-post');
+      return;
+    }
+
     if (!formData.title || !formData.content) {
       return setPublishError('Please provide title and content');
     }
@@ -192,11 +264,23 @@ export default function UpdatePost() {
     try {
       setLoading(true);
       
+      // ✅ Use CSRF token for the request
+      const currentCsrfToken = csrfToken || freshCsrfToken;
+      
+      if (!currentCsrfToken) {
+        throw new Error('Security token not available. Please refresh the page.');
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': currentCsrfToken,
+      };
+
+      console.log('🔄 Updating post with CSRF token:', currentCsrfToken);
+
       const res = await apiInterceptor.request(`/api/post/updatepost/${postId}/${currentUser.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           title: formData.title,
@@ -209,6 +293,10 @@ export default function UpdatePost() {
       const data = await res.json();
 
       if (!res.ok) {
+        // Handle CSRF token errors specifically
+        if (res.status === 403 && data.detail?.includes('CSRF')) {
+          throw new Error('Security token error. Please refresh the page and try again.');
+        }
         throw new Error(data.message || 'Failed to update post');
       }
 
@@ -227,6 +315,32 @@ export default function UpdatePost() {
     } catch (error) {
       console.error('Error updating post:', error);
       setPublishError((error as Error).message);
+      
+      // If it's a CSRF error, suggest refreshing the token
+      if ((error as Error).message.includes('CSRF') || (error as Error).message.includes('token')) {
+        // Try to get a fresh token
+        try {
+          console.log('🔄 Attempting to refresh CSRF token after error...');
+          const res = await apiInterceptor.request('/api/auth/csrf-token', {
+            method: 'GET',
+            credentials: 'include',
+          });
+          
+          if (res.ok) {
+            const tokenData = await res.json();
+            if (tokenData.csrfToken) {
+              setFreshCsrfToken(tokenData.csrfToken);
+              dispatch({
+                type: 'user/setCsrfToken',
+                payload: tokenData.csrfToken
+              });
+              console.log('✅ CSRF token refreshed after error');
+            }
+          }
+        } catch (tokenError) {
+          console.error('Error refreshing CSRF token:', tokenError);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -243,6 +357,22 @@ export default function UpdatePost() {
     );
   }
 
+  // Check authorization
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <Card className="text-center p-8">
+          <Alert color="failure" className="mb-4">
+            Please sign in to update post
+          </Alert>
+          <Button onClick={() => router.push('/sign-in?redirect=/update-post')}>
+            Sign In
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="max-w-4xl mx-auto px-4">
@@ -254,17 +384,27 @@ export default function UpdatePost() {
             <p className="text-gray-600 dark:text-gray-300">
               Edit and improve your existing post
             </p>
+            <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Updating as: <span className="font-medium text-purple-600 dark:text-purple-400">{currentUser.username}</span>
+              {csrfToken ? (
+                <span className="ml-2 text-green-600 dark:text-green-400">• Security token ready</span>
+              ) : freshCsrfToken ? (
+                <span className="ml-2 text-yellow-600 dark:text-yellow-400">• Using fresh token</span>
+              ) : (
+                <span className="ml-2 text-red-600 dark:text-red-400">• No security token</span>
+              )}
+            </div>
           </div>
 
           <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
             {/* Success and Error Alerts */}
             {publishError && (
-              <Alert color="failure" className="mb-4">
+              <Alert color="failure" className="mb-4" onDismiss={() => setPublishError(null)}>
                 {publishError}
               </Alert>
             )}
             {publishSuccess && (
-              <Alert color="success" className="mb-4">
+              <Alert color="success" className="mb-4" onDismiss={() => setPublishSuccess(null)}>
                 {publishSuccess}
               </Alert>
             )}
@@ -287,6 +427,7 @@ export default function UpdatePost() {
                   sizing="lg"
                   value={formData.title}
                   onChange={handleChange}
+                  disabled={loading}
                   className="text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 />
               </div>
@@ -305,6 +446,7 @@ export default function UpdatePost() {
                   sizing="lg"
                   value={formData.category}
                   onChange={handleChange}
+                  disabled={loading}
                   className="text-gray-900 dark:text-white"
                 >
                   <option value="uncategorized">Select a category</option>
@@ -334,6 +476,7 @@ export default function UpdatePost() {
                 rows={12}
                 value={formData.content}
                 onChange={handleChange}
+                disabled={loading}
                 className="resize-y text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
             </div>
@@ -364,7 +507,8 @@ export default function UpdatePost() {
                         <button
                           type="button"
                           onClick={clearPostImage}
-                          className="absolute top-2 right-2 bg-red-500 dark:bg-red-600 text-white p-2 rounded-full hover:bg-red-600 dark:hover:bg-red-700 w-8 h-8 flex items-center justify-center text-sm transition-all duration-200 shadow-lg hover:scale-110"
+                          disabled={loading}
+                          className="absolute top-2 right-2 bg-red-500 dark:bg-red-600 text-white p-2 rounded-full hover:bg-red-600 dark:hover:bg-red-700 w-8 h-8 flex items-center justify-center text-sm transition-all duration-200 shadow-lg hover:scale-110 disabled:opacity-50"
                         >
                           ×
                         </button>
@@ -394,6 +538,7 @@ export default function UpdatePost() {
                           id="image"
                           accept="image/*"
                           onChange={handleImageChange}
+                          disabled={loading}
                           className="w-full text-gray-900 dark:text-white border-none focus:ring-0 focus:border-transparent"
                         />
                       </div>
@@ -406,7 +551,7 @@ export default function UpdatePost() {
                       type="button"
                       color="purple"
                       onClick={handleImageUpload}
-                      disabled={!imagePreview || isUploading}
+                      disabled={!imagePreview || isUploading || loading}
                       className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 border-transparent shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
                     >
                       {isUploading ? (
@@ -434,6 +579,7 @@ export default function UpdatePost() {
                 type="button"
                 color="gray"
                 onClick={() => router.back()}
+                disabled={loading}
                 className="sm:w-auto w-full"
                 size="lg"
               >

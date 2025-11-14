@@ -18,7 +18,7 @@ import { Post } from '../types/post';
 import { RootState } from '../types/redux';
 
 export default function DashPosts() {
-  const { currentUser } = useSelector((state: RootState) => state.user);
+  const { currentUser, csrfToken } = useSelector((state: RootState) => state.user);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [showMore, setShowMore] = useState<boolean>(true);
   const [showModal, setShowModal] = useState<boolean>(false);
@@ -27,7 +27,51 @@ export default function DashPosts() {
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('');
+  const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
+  const [freshCsrfToken, setFreshCsrfToken] = useState<string | null>(null);
   const router = useRouter();
+
+  // ✅ CSRF Token Initialization
+  useEffect(() => {
+    let isMounted = true;
+
+    const initializeCsrfToken = async () => {
+      if (currentUser) {
+        if (csrfToken) {
+          // ✅ Use existing token from Redux store
+          console.log('✅ Using CSRF token from Redux store for DashPosts');
+          if (isMounted) {
+            setFreshCsrfToken(csrfToken);
+          }
+        } else {
+          // ✅ Only fetch new token if not available in Redux
+          try {
+            console.log('🔄 Fetching CSRF token for DashPosts...');
+            const res = await apiInterceptor.request('/api/auth/csrf-token', {
+              method: 'GET',
+              credentials: 'include',
+            });
+            
+            if (res.ok && isMounted) {
+              const data = await res.json();
+              if (data.csrfToken) {
+                console.log('✅ New CSRF token received for DashPosts:', data.csrfToken);
+                setFreshCsrfToken(data.csrfToken);
+              }
+            }
+          } catch (error) {
+            console.error('Error getting CSRF token for DashPosts:', error);
+          }
+        }
+      }
+    };
+
+    initializeCsrfToken();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, csrfToken]);
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -39,6 +83,15 @@ export default function DashPosts() {
     try {
       setError('');
       setLoading(true);
+      
+      // ✅ Add CSRF token to request headers
+      const headers: Record<string, string> = {};
+      const currentCsrfToken = csrfToken || freshCsrfToken;
+      
+      if (currentCsrfToken) {
+        headers['X-CSRF-Token'] = currentCsrfToken;
+      }
+
       const searchParams = new URLSearchParams({
         userId: currentUser.id,
         startIndex: startIndex.toString(),
@@ -47,10 +100,19 @@ export default function DashPosts() {
         ...(filterCategory && { category: filterCategory }),
       });
 
-      const res = await apiInterceptor.request(`/api/post/getposts?${searchParams}`);
+      const res = await apiInterceptor.request(`/api/post/getposts?${searchParams}`, {
+        method: 'GET',
+        headers,
+        credentials: 'include'
+      });
+      
       const data = await res.json();
 
       if (!res.ok) {
+        // Handle CSRF token errors
+        if (res.status === 403 && data.detail?.includes('CSRF')) {
+          throw new Error('Security token error. Please refresh the page.');
+        }
         throw new Error(data.message || 'Failed to fetch posts');
       }
 
@@ -64,8 +126,33 @@ export default function DashPosts() {
     } catch (error) {
       setError((error as Error).message);
       console.error('Error fetching posts:', error);
+      
+      // If it's a CSRF error, try to refresh the token
+      if ((error as Error).message.includes('CSRF') || (error as Error).message.includes('token')) {
+        await refreshCsrfToken();
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const refreshCsrfToken = async () => {
+    try {
+      console.log('🔄 Attempting to refresh CSRF token...');
+      const res = await apiInterceptor.request('/api/auth/csrf-token', {
+        method: 'GET',
+        credentials: 'include',
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.csrfToken) {
+          setFreshCsrfToken(data.csrfToken);
+          console.log('✅ CSRF token refreshed successfully');
+        }
+      }
+    } catch (tokenError) {
+      console.error('Error refreshing CSRF token:', tokenError);
     }
   };
 
@@ -77,13 +164,34 @@ export default function DashPosts() {
   const handleDeletePost = async () => {
     try {
       setError('');
+      setDeleteLoading(true);
+      
+      // ✅ Use CSRF token for DELETE request
+      const currentCsrfToken = csrfToken || freshCsrfToken;
+      
+      if (!currentCsrfToken) {
+        throw new Error('Security token not available. Please refresh the page.');
+      }
+
+      const headers = {
+        'X-CSRF-Token': currentCsrfToken,
+      };
+
+      console.log('🔄 Deleting post with CSRF token');
+
       const res = await apiInterceptor.request(`/api/post/deletepost/${postIdToDelete}/${currentUser.id}`, {
         method: 'DELETE',
+        headers,
+        credentials: 'include'
       });
 
       const data = await res.json();
 
       if (!res.ok) {
+        // Handle CSRF token errors specifically
+        if (res.status === 403 && data.detail?.includes('CSRF')) {
+          throw new Error('Security token error. Please refresh the page and try again.');
+        }
         throw new Error(data.message || 'Failed to delete post');
       }
 
@@ -92,6 +200,14 @@ export default function DashPosts() {
       setPostIdToDelete('');
     } catch (error) {
       setError((error as Error).message);
+      console.error('Error deleting post:', error);
+      
+      // If it's a CSRF error, refresh the token
+      if ((error as Error).message.includes('CSRF') || (error as Error).message.includes('token')) {
+        await refreshCsrfToken();
+      }
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -129,6 +245,16 @@ export default function DashPosts() {
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             Manage and track your blog posts
           </p>
+          <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Security Status: 
+            {csrfToken ? (
+              <span className="ml-2 text-green-600 dark:text-green-400">• Protected</span>
+            ) : freshCsrfToken ? (
+              <span className="ml-2 text-yellow-600 dark:text-yellow-400">• Using fresh token</span>
+            ) : (
+              <span className="ml-2 text-red-600 dark:text-red-400">• No security token</span>
+            )}
+          </div>
         </div>
         <Link
           href="/create-post"
@@ -164,10 +290,20 @@ export default function DashPosts() {
               <option key={category} value={category}>{category}</option>
             ))}
           </select>
-          <Button type="submit" className="bg-teal-500 hover:bg-teal-600">
+          <Button 
+            type="submit" 
+            className="bg-teal-500 hover:bg-teal-600"
+            disabled={loading}
+          >
+            {loading ? <Spinner size="sm" className="mr-2" /> : null}
             Search
           </Button>
-          <Button type="button" color="light" onClick={handleResetFilters}>
+          <Button 
+            type="button" 
+            color="light" 
+            onClick={handleResetFilters}
+            disabled={loading}
+          >
             Reset
           </Button>
         </form>
@@ -175,7 +311,7 @@ export default function DashPosts() {
 
       {/* Error Alert */}
       {error && (
-        <Alert color="failure" className="mb-6">
+        <Alert color="failure" className="mb-6" onDismiss={() => setError('')}>
           <span>{error}</span>
         </Alert>
       )}
@@ -272,6 +408,7 @@ export default function DashPosts() {
                           }}
                           className="p-2 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                           title="Delete Post"
+                          disabled={deleteLoading}
                         >
                           <HiOutlineTrash className="w-5 h-5" />
                         </button>
@@ -326,8 +463,10 @@ export default function DashPosts() {
           onConfirm={handleDeletePost}
           title="Delete Post Confirmation"
           message="Are you sure you want to delete this post? This action cannot be undone and the post will be permanently removed."
-          confirmText="Yes, Delete It"
+          confirmText={deleteLoading ? "Deleting..." : "Yes, Delete It"}
           cancelText="Cancel"
+          confirmDisabled={deleteLoading}
+          loading={deleteLoading}
         />
       </div>
     </div>
