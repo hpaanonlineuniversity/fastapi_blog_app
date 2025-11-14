@@ -128,7 +128,7 @@ class AuthController:
             httponly=False,
             secure=False,
             samesite="lax",
-            max_age=15 * 60
+            max_age=1 * 60
         )
         
         # Prepare user response
@@ -202,7 +202,7 @@ class AuthController:
             httponly=False,
             secure=False,
             samesite="lax",
-            max_age=7 * 24 * 60 * 60
+            max_age=1 * 60
         )
         
         return {
@@ -388,7 +388,7 @@ class AuthController:
                 httponly=False,
                 secure=False,
                 samesite="lax",
-                max_age=15 * 60
+                max_age=1 * 60
             )
             
             return {

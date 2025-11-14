@@ -28,3 +28,16 @@ async def get_current_user(request: Request):
     
     print(f"✅ User authenticated: {payload.get('id')}")
     return payload
+
+# utils/auth_dependency.py ထဲမှာ ဒီ function ကို ထပ်ဖြည့်ပါ
+async def get_current_user_optional(request: Request):
+    """Optional dependency - returns user if authenticated, None if not"""
+    try:
+        token = request.cookies.get("access_token")
+        if not token:
+            return None
+        
+        payload = await verify_access_token(token)
+        return payload if payload else None
+    except Exception:
+        return None

@@ -2,9 +2,10 @@
 from fastapi import APIRouter, Response, Request, Cookie, Depends, Header
 from ..controllers.auth_controller import auth_controller
 from ..schemas.user_schema import UserCreate, UserLogin, UserGoogle
-from ..utils.auth_dependency import get_current_user
+from ..utils.auth_dependency import get_current_user, get_current_user_optional  # ✅ ဒီမှာ ဖြည့်ပါ
 from ..utils.csrf_dependency import verify_csrf_token, get_csrf_token
 from ..utils.password_policy import PasswordPolicy
+from ..utils.csrf_security import csrf_protection
 
 router = APIRouter()
 
@@ -147,24 +148,23 @@ async def check_username_availability(username: str):
     }
 
 @router.get("/csrf-token")
-async def get_csrf_token_endpoint(
-    request: Request
-):
+async def get_csrf_token_endpoint(request: Request):
     """Get new CSRF token - Allow public access"""
     try:
         # Try to get current user, but don't require authentication
-        from ..utils.auth_dependency import get_current_user_optional
         current_user = await get_current_user_optional(request)
         
         if current_user:
             # Authenticated user - generate user-specific CSRF token
-            return await auth_controller.get_csrf_token(current_user["id"])
+            csrf_token = await csrf_protection.generate_csrf_token(current_user["id"])
+            return {"csrfToken": csrf_token}
         else:
             # Unauthenticated user - generate anonymous CSRF token
             csrf_token = await csrf_protection.generate_csrf_token()
             return {"csrfToken": csrf_token}
             
     except Exception as e:
+        print(f"❌ Error generating CSRF token: {e}")
         # Fallback - generate anonymous token
         csrf_token = await csrf_protection.generate_csrf_token()
         return {"csrfToken": csrf_token}

@@ -60,7 +60,7 @@ const userSlice = createSlice({
     setCsrfToken: (state, action: PayloadAction<string>) => {
       state.csrfToken = action.payload;
       // ✅ Set expiry time when setting token manually
-      state.csrfTokenExpiry = Date.now() + (15 * 60 * 1000);
+      state.csrfTokenExpiry = Date.now() + (1 * 60 * 1000);
     },
     clearCsrfToken: (state) => {
       state.csrfToken = null;

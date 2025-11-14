@@ -7,7 +7,7 @@ class CSRFProtection:
     def __init__(self):
         # ✅ CSRF token ကို session တစ်ခုလုံးအတွက် သိမ်းထားမယ်
         # Frontend က multiple requests လုပ်နိုင်အောင်
-        self.token_expiry = 15 * 60  # 15 minutes (session duration)
+        self.token_expiry = 1 * 60  # 15 minutes (session duration)
     
     async def generate_csrf_token(self, user_id: str = None) -> str:
         """
