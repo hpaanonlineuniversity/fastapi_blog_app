@@ -1,5 +1,5 @@
 // Define TypeScript interfaces
-export interface CreatePostFormData {
+export interface FormData {  // used in create post , update post
   title: string;
   category: string;
   content: string;

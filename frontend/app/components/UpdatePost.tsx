@@ -14,11 +14,11 @@ import {
 import { useState, useRef, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRouter, useParams } from 'next/navigation';
-import { apiInterceptor } from '../../utils/apiInterceptor';
+import { apiInterceptor } from '../utils/apiInterceptor';
 
-import { FormData } from '../../types/form';
-import { RootState } from '../../types/redux';
-import { Post } from '../../types/post';
+import { FormData } from '../types/form';
+import { RootState } from '../types/redux';
+import { Post } from '../types/post';
 
 
 export default function UpdatePost() {

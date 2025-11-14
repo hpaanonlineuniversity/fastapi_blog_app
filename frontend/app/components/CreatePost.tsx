@@ -17,7 +17,7 @@ import { useRouter } from 'next/navigation';
 import { apiInterceptor } from '../utils/apiInterceptor';
 import { RootState } from '../types/redux';
 import Image from 'next/image';
-import { CreatePostFormData } from '../types/form';
+import { FormData } from '../types/form';
 import { CreatePostResponse } from '../types/post';
 
 export default function CreatePost() {
@@ -34,7 +34,7 @@ export default function CreatePost() {
   
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [formData, setFormData] = useState<CreatePostFormData>({
+  const [formData, setFormData] = useState<FormData>({
     title: '',
     category: 'uncategorized',
     content: '',
