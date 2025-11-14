@@ -1,7 +1,12 @@
 // Define TypeScript interfaces
-export interface FormData {
+export interface CreatePostFormData {
   title: string;
   category: string;
   content: string;
   image: string;
+}
+
+export interface SignInFormData {
+  email: string;
+  password: string;
 }

@@ -1,4 +1,4 @@
-// app/sign-in/page.tsx - FIXED VERSION
+// app/sign-in/page.tsx - COMPLETE FIXED VERSION
 'use client';
 
 import { Alert, Button, Label, Spinner, TextInput, Card } from 'flowbite-react';
@@ -11,14 +11,18 @@ import {
   signInStart,
   signInSuccess,
   signInFailure,
+  setCsrfToken,
 } from '../redux/user/userSlice';
 import { apiInterceptor } from '../utils/apiInterceptor';
+import { SignInFormData } from '../types/form';
+import { UserData , ApiResponse } from '../types/user';
 
+/*
 interface FormData {
   email: string;
   password: string;
 }
-
+  
 interface UserData {
   id: string;
   username: string;
@@ -27,17 +31,20 @@ interface UserData {
   isAdmin: boolean;
 }
 
+
 interface ApiResponse {
   success: boolean;
   message?: string;
   user?: UserData;
-}
+  csrfToken?: string;
+}*/
 
 export default function SignIn() {
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState<SignInFormData>({
     email: '',
     password: ''
   });
+  
   const { loading, error: errorMessage } = useAppSelector((state) => state.user);
   const dispatch = useAppDispatch();
   const router = useRouter();
@@ -48,6 +55,7 @@ export default function SignIn() {
       ...prev,
       [id]: value.trim()
     }));
+    
     // Clear error when user starts typing
     if (errorMessage) {
       dispatch(signInFailure(null));
@@ -59,14 +67,17 @@ export default function SignIn() {
       dispatch(signInFailure('Please enter your email address'));
       return false;
     }
+    
     if (!formData.password.trim()) {
       dispatch(signInFailure('Please enter your password'));
       return false;
     }
+    
     if (!/\S+@\S+\.\S+/.test(formData.email)) {
       dispatch(signInFailure('Please enter a valid email address'));
       return false;
     }
+    
     return true;
   };
 
@@ -82,7 +93,9 @@ export default function SignIn() {
       
       const res = await apiInterceptor.request('/api/auth/signin', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(formData),
       });
       
@@ -102,14 +115,26 @@ export default function SignIn() {
           isAdmin: data.user.isAdmin,
         };
         
-        dispatch(signInSuccess(userData));
+        // ✅ CSRF token ကို Redux state ထဲမှာသိမ်းမယ် (localStorage မဟုတ်ဘူး)
+        if (data.csrfToken) {
+          dispatch(setCsrfToken(data.csrfToken));
+          console.log('CSRF token stored in Redux state');
+        }
+        
+        // ✅ User data နဲ့ CSRF token ကိုတစ်ခါတည်း dispatch လုပ်မယ်
+        dispatch(signInSuccess({
+          user: userData,
+          csrfToken: data.csrfToken
+        }));
+        
+        // ✅ Success message and redirect
+        console.log('Sign in successful, redirecting...');
         router.push('/');
       }
     } catch (error) {
       console.error('SignIn error:', error);
-      dispatch(signInFailure(
-        (error as Error).message || 'Sign in failed. Please try again.'
-      ));
+      const errorMessage = (error as Error).message || 'Sign in failed. Please try again.';
+      dispatch(signInFailure(errorMessage));
     }
   };
 
@@ -151,6 +176,7 @@ export default function SignIn() {
             </div>
 
             <form className='flex flex-col gap-4' onSubmit={handleSubmit}>
+              {/* Email Input */}
               <div className='space-y-2'>
                 <Label htmlFor='email' value='Email Address' />
                 <TextInput
@@ -162,9 +188,11 @@ export default function SignIn() {
                   required
                   shadow
                   disabled={loading}
+                  autoComplete='email'
                 />
               </div>
               
+              {/* Password Input */}
               <div className='space-y-2'>
                 <div className='flex justify-between items-center'>
                   <Label htmlFor='password' value='Password' />
@@ -184,21 +212,22 @@ export default function SignIn() {
                   required
                   shadow
                   disabled={loading}
+                  autoComplete='current-password'
                 />
               </div>
 
-              {/* ✅ FIXED BUTTON - Remove isProcessing prop */}
+              {/* Submit Button */}
               <Button
                 color="purple"
                 type='submit'
                 disabled={loading}
-                className='w-full mt-2 transition-all duration-200 hover:shadow-lg'
+                className='w-full mt-2 transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed'
                 size='lg'
               >
                 {loading ? (
                   <>
-                    <Spinner size='sm' />
-                    <span className='pl-3'>Signing In...</span>
+                    <Spinner size='sm' className='mr-2' />
+                    <span>Signing In...</span>
                   </>
                 ) : (
                   'Sign In'

@@ -1,3 +1,4 @@
+// app/create-post/page.tsx - OPTIMIZED VERSION
 'use client';
 import { 
   Alert, 
@@ -16,30 +17,91 @@ import { useRouter } from 'next/navigation';
 import { apiInterceptor } from '../utils/apiInterceptor';
 import { RootState } from '../types/redux';
 import Image from 'next/image';
-import { FormData } from '../types/form';
-
+import { CreatePostFormData } from '../types/form';
+import { CreatePostResponse } from '../types/post';
 
 export default function CreatePost() {
   const router = useRouter();
+  const dispatch = useDispatch();
+  const { currentUser, csrfToken, loading: userLoading } = useSelector((state: RootState) => state.user);
+  
   const [loading, setLoading] = useState<boolean>(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState<boolean>(false);
   const [image, setImage] = useState<File | undefined>(undefined);
   const [localPostImage, setLocalPostImage] = useState<string>('');
-  const fileRef = useRef<HTMLInputElement>(null);
-  const dispatch = useDispatch();
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [freshCsrfToken, setFreshCsrfToken] = useState<string | null>(null);
+  
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  // Initialize formData state
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState<CreatePostFormData>({
     title: '',
     category: 'uncategorized',
     content: '',
     image: ''
   });
 
+  // ✅ OPTIMIZED: Use Redux token first, only fetch if needed
+  useEffect(() => {
+    let isMounted = true;
+
+    const initializeCsrfToken = async () => {
+      if (currentUser) {
+        if (csrfToken) {
+          // ✅ Use existing token from Redux store
+          console.log('✅ Using CSRF token from Redux store');
+          if (isMounted) {
+            setFreshCsrfToken(csrfToken);
+          }
+        } else {
+          // ✅ Only fetch new token if not available in Redux
+          try {
+            console.log('🔄 Fetching CSRF token (not in store)...');
+            const res = await apiInterceptor.request('/api/auth/csrf-token', {
+              method: 'GET',
+              credentials: 'include',
+            });
+            
+            if (res.ok && isMounted) {
+              const data = await res.json();
+              if (data.csrfToken) {
+                console.log('✅ New CSRF token received:', data.csrfToken);
+                setFreshCsrfToken(data.csrfToken);
+                
+                dispatch({
+                  type: 'user/setCsrfToken',
+                  payload: data.csrfToken
+                });
+              }
+            }
+          } catch (error) {
+            console.error('Error getting CSRF token:', error);
+          }
+        }
+      }
+    };
+
+    initializeCsrfToken();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, csrfToken, dispatch]);
+
+  // ✅ Redirect if not authenticated
+  useEffect(() => {
+    if (!userLoading && !currentUser) {
+      console.log('User not authenticated, redirecting to signin...');
+      router.push('/sign-in?redirect=/create-post');
+      return;
+    }
+  }, [currentUser, userLoading, router]);
+
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.id]: e.target.value });
+    if (publishError) {
+      setPublishError(null);
+    }
   };
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -49,14 +111,15 @@ export default function CreatePost() {
     }
   };
 
+  // Handle image upload when image state changes
   useEffect(() => {
     if (image) {
       handleFileUpload(image);
     }
   }, [image]);
 
+  // Load saved image from localStorage on component mount
   useEffect(() => {
-    // Check if we're in the browser environment before using localStorage
     if (typeof window !== 'undefined') {
       const savedPostImage = localStorage.getItem('postImage');
       if (savedPostImage) {
@@ -73,7 +136,7 @@ export default function CreatePost() {
         throw new Error('No file selected');
       }
 
-      const maxSize = 5 * 1024 * 1024; // 5MB for posts
+      const maxSize = 5 * 1024 * 1024;
       if (image.size > maxSize) {
         throw new Error('File size must be less than 5MB');
       }
@@ -94,22 +157,18 @@ export default function CreatePost() {
           setLocalPostImage(base64String);
           setImagePreview(base64String);
           setFormData(prev => ({ ...prev, image: base64String }));
-          console.log('Post image saved to local storage successfully');
         } catch (error) {
-          console.error('Error processing file:', (error as Error).message);
-          alert('Error saving post image: ' + (error as Error).message);
+          setPublishError('Error saving post image: ' + (error as Error).message);
         }
       };
 
-      reader.onerror = (error) => {
-        console.error('File reading error:', error);
-        alert('Error reading file');
+      reader.onerror = () => {
+        setPublishError('Error reading file');
       };
 
       reader.readAsDataURL(image);
     } catch (error) {
-      console.error('Error uploading file:', (error as Error).message);
-      alert((error as Error).message);
+      setPublishError((error as Error).message);
     }
   };
 
@@ -120,52 +179,149 @@ export default function CreatePost() {
     setLocalPostImage('');
     setImagePreview(null);
     setFormData(prev => ({ ...prev, image: '' }));
-    console.log('Post image cleared from local storage');
-  };
-
-  const handleImageUpload = () => {
-    // Image upload logic will be handled by parent component
-    setIsUploading(true);
-    setTimeout(() => setIsUploading(false), 1000); // Simulate upload
+    if (fileRef.current) {
+      fileRef.current.value = '';
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    
+    if (!currentUser) {
+      setPublishError('Please sign in to create a post');
+      router.push('/sign-in?redirect=/create-post');
+      return;
+    }
+
+    if (!formData.title.trim() || !formData.content.trim()) {
+      setPublishError('Please fill in all required fields');
+      return;
+    }
+
     setLoading(true); 
+    setPublishError(null);
 
     console.log('Form Data:', formData);
+    console.log('Redux CSRF Token:', csrfToken);
+    console.log('Fresh CSRF Token:', freshCsrfToken);
+    console.log('User authenticated:', !!currentUser);
     
     try {
-      const res = await apiInterceptor.request('/api/post/create/', {
+      // ✅ PRIORITY: Use Redux token first, then fresh token as fallback
+      const currentCsrfToken = csrfToken || freshCsrfToken;
+      
+      if (!currentCsrfToken) {
+        throw new Error('No CSRF token available. Please refresh the page.');
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': currentCsrfToken,
+      };
+
+      console.log('Making request with CSRF token:', currentCsrfToken);
+
+      const res = await apiInterceptor.request('/api/post/create', {
         method: 'POST',
+        headers,
+        credentials: 'include',
         body: JSON.stringify(formData)
       });
 
-      const data = await res.json();
-      console.log('Update response:', data);
+      const responseText = await res.text();
+      let data: CreatePostResponse;
+      
+      try {
+        data = JSON.parse(responseText);
+      } catch (jsonError) {
+        console.error('Error parsing JSON:', jsonError);
+        console.error('Raw response:', responseText);
+        throw new Error('Invalid server response');
+      }
+
+      console.log('Create post response:', data);
 
       if (!res.ok) {
-        // ✅ Only show user-friendly errors, not 401 errors
-        if (res.status !== 401) {
-          setPublishError(data.message || 'Something went wrong');
+        if (res.status === 403) {
+          if (data.detail?.includes('CSRF')) {
+            setPublishError('Security token error. Please refresh the page and try again.');
+          } else {
+            setPublishError('You do not have permission to create posts.');
+          }
+          return;
+        } else if (res.status === 401) {
+          setPublishError('Your session has expired. Please sign in again.');
+          router.push('/sign-in?redirect=/create-post');
+          return;
+        } else if (res.status === 400) {
+          setPublishError(data.message || data.detail || 'Please check your input and try again.');
+          return;
+        } else {
+          setPublishError(data.message || data.detail || 'Something went wrong. Please try again.');
+          return;
         }
-        return;
       }
 
-      if (res.ok) {
-        setPublishError(null);
-        // Remove image from localStorage
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('postImage');
-        }
-        router.push(`/post/${data.slug}`);
+      // Success case
+      setPublishError(null);
+      
+      // Remove image from localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('postImage');
       }
-    } catch (error) {
-      setPublishError('Something went wrong');
+      
+      // Redirect to the new post
+      if (data.slug) {
+        console.log('Post created successfully, redirecting to:', `/post/${data.slug}`);
+        router.push(`/post/${data.slug}`);
+      } else {
+        router.push('/');
+      }
+    } catch (error: any) {
+      console.error('Create post error:', error);
+      
+      if (error.message?.includes('Network') || error.name === 'TypeError') {
+        setPublishError('Network error. Please check your connection and try again.');
+      } else if (error.message?.includes('Authentication') || error.message?.includes('Unauthorized')) {
+        setPublishError('Authentication failed. Please sign in again.');
+        router.push('/sign-in?redirect=/create-post');
+      } else if (error.message?.includes('CSRF') || error.message?.includes('token')) {
+        setPublishError('Security token error. Please refresh the page and try again.');
+      } else {
+        setPublishError(error.message || 'Something went wrong. Please try again.');
+      }
     } finally {
-      setLoading(false); // loading finished
+      setLoading(false);
     }
   };
+
+  // Loading state
+  if (userLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <Card className="text-center p-8">
+          <Spinner size="xl" className="mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Checking authentication...</p>
+        </Card>
+      </div>
+    );
+  }
+
+  // Not authenticated state
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <Card className="text-center p-8">
+          <Alert color="failure" className="mb-4">
+            Please sign in to create a post
+          </Alert>
+          <Button onClick={() => router.push('/sign-in?redirect=/create-post')}>
+            Sign In
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
@@ -178,19 +334,23 @@ export default function CreatePost() {
             <p className="text-gray-600 dark:text-gray-300">
               Share your thoughts and ideas with the world
             </p>
+            <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Posting as: <span className="font-medium text-purple-600 dark:text-purple-400">{currentUser.username}</span>
+              {csrfToken ? (
+                <span className="ml-2 text-green-600 dark:text-green-400">• Security token ready</span>
+              ) : freshCsrfToken ? (
+                <span className="ml-2 text-yellow-600 dark:text-yellow-400">• Using fresh token</span>
+              ) : (
+                <span className="ml-2 text-red-600 dark:text-red-400">• No security token</span>
+              )}
+            </div>
           </div>
 
           <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
             {/* Title & Category Row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
-                <div className="mb-2">
-                  <Label 
-                    htmlFor="title" 
-                    value="Post Title" 
-                    className="text-lg font-medium text-gray-700 dark:text-white" 
-                  />
-                </div>
+                <Label htmlFor="title" value="Post Title" className="text-lg font-medium text-gray-700 dark:text-white" />
                 <TextInput
                   id="title"
                   type="text"
@@ -199,25 +359,19 @@ export default function CreatePost() {
                   sizing="lg"
                   value={formData.title}
                   onChange={handleChange}
-                  className="text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                  disabled={loading}
                 />
               </div>
               
               <div>
-                <div className="mb-2">
-                  <Label 
-                    htmlFor="category" 
-                    value="Category" 
-                    className="text-lg font-medium text-gray-700 dark:text-white" 
-                  />
-                </div>
+                <Label htmlFor="category" value="Category" className="text-lg font-medium text-gray-700 dark:text-white" />
                 <Select
                   id="category"
                   required
                   sizing="lg"
                   value={formData.category}
                   onChange={handleChange}
-                  className="text-gray-900 dark:text-white"
+                  disabled={loading}
                 >
                   <option value="uncategorized">Select a category</option>
                   <option value="javascript">JavaScript</option>
@@ -232,39 +386,29 @@ export default function CreatePost() {
 
             {/* Content */}
             <div>
-              <div className="mb-2">
-                <Label 
-                  htmlFor="content" 
-                  value="Post Content" 
-                  className="text-lg font-medium text-gray-700 dark:text-white" 
-                />
-              </div>
+              <Label htmlFor="content" value="Post Content" className="text-lg font-medium text-gray-700 dark:text-white" />
               <Textarea
                 id="content"
-                placeholder="Write your post content here... You can use markdown formatting."
+                placeholder="Write your post content here..."
                 required
                 rows={12}
                 value={formData.content}
                 onChange={handleChange}
-                className="resize-y text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                disabled={loading}
               />
             </div>
 
             {/* Image Upload Section */}
             <div className="space-y-4">
               <div>
-                <Label 
-                  value="Featured Image" 
-                  className="text-lg font-medium text-gray-700 dark:text-white" 
-                />
+                <Label value="Featured Image" className="text-lg font-medium text-gray-700 dark:text-white" />
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                  Add a compelling image to make your post stand out
+                  Add a compelling image to make your post stand out (optional)
                 </p>
               </div>
               
-              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 hover:border-purple-400 dark:hover:border-purple-500 transition-all duration-300 bg-gradient-to-br from-white to-gray-100 dark:from-gray-800 dark:to-gray-900 hover:from-purple-50 hover:to-blue-50 dark:hover:from-gray-750 dark:hover:to-gray-800">
+              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6">
                 <div className="flex flex-col lg:flex-row gap-6 items-center">
-                  {/* Image Preview */}
                   <div className="flex-1">
                     {imagePreview ? (
                       <div className="relative group">
@@ -273,71 +417,45 @@ export default function CreatePost() {
                           alt="Preview"
                           width={400}
                           height={300}
-                          className="w-full h-48 lg:h-64 object-cover rounded-lg shadow-lg transition-transform duration-300 group-hover:scale-105"
-                          unoptimized={true} // Since it's base64/local image
+                          className="w-full h-48 lg:h-64 object-cover rounded-lg shadow-lg"
+                          unoptimized={true}
                         />
                         <button
                           type="button"
                           onClick={clearPostImage}
-                          className="absolute top-2 right-2 bg-red-500 dark:bg-red-600 text-white p-2 rounded-full hover:bg-red-600 dark:hover:bg-red-700 w-8 h-8 flex items-center justify-center text-sm transition-all duration-200 shadow-lg hover:scale-110"
+                          disabled={loading}
+                          className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 w-8 h-8 flex items-center justify-center text-sm disabled:opacity-50"
                         >
                           ×
                         </button>
                       </div>
                     ) : (
                       <div className="text-center py-8">
-                        <div className="text-gray-300 dark:text-gray-600 mb-3 transition-colors duration-300">
+                        <div className="text-gray-300 dark:text-gray-600 mb-3">
                           <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                         </div>
                         <p className="text-gray-400 dark:text-gray-500 font-medium">No image selected</p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Click browse to select an image</p>
                       </div>
                     )}
                   </div>
 
-                  {/* Upload Controls */}
                   <div className="flex-1 space-y-4">
                     <div className="text-center lg:text-left">
-                      <div className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 shadow-sm">
-                        <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                        </svg>
+                      <div className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
                         <FileInput
                           ref={fileRef}
                           id="image"
                           accept="image/*"
                           onChange={handleImageChange}
-                          className="w-full text-gray-900 dark:text-white border-none focus:ring-0 focus:border-transparent"
+                          disabled={loading}
                         />
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                         Supported formats: JPG, PNG, GIF, WEBP • Max size: 5MB
                       </p>
                     </div>
-                    
-                    <Button
-                      type="button"
-                      color="purple"
-                      onClick={handleImageUpload}
-                      disabled={!imagePreview || isUploading}
-                      className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 border-transparent shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
-                    >
-                      {isUploading ? (
-                        <>
-                          <Spinner size="sm" className="mr-2" />
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          Upload Image
-                        </>
-                      )}
-                    </Button>
                   </div>
                 </div>
               </div>
@@ -345,11 +463,12 @@ export default function CreatePost() {
 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
-              
               {publishError && (
-                  <Alert color="failure" className="mb-4">
+                <div className="sm:col-span-2">
+                  <Alert color="failure" className="mb-4" onDismiss={() => setPublishError(null)}>
                     {publishError}
                   </Alert>
+                </div>
               )}
 
               <Button
@@ -365,27 +484,12 @@ export default function CreatePost() {
                     Publishing...
                   </>
                 ) : (
-                  <>
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Publish Post
-                  </>
+                  'Publish Post'
                 )}
               </Button>
             </div>
           </form>
         </Card>
-
-        {/* Help Text */}
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Need help? Check out our{' '}
-            <a href="#" className="text-purple-600 dark:text-purple-400 hover:underline">
-              writing guidelines
-            </a>
-          </p>
-        </div>
       </div>
     </div>
   );

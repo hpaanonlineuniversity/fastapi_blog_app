@@ -33,6 +33,13 @@ export interface ApiError {
   success?: boolean;
 }
 
+export interface ApiResponse {
+  success: boolean;
+  message?: string;
+  user?: UserData;
+  csrfToken?: string;
+}
+
 export interface UsersResponse {
   users: User[];
   totalUsers: number;
@@ -40,4 +47,12 @@ export interface UsersResponse {
   hasMore?: boolean;
   success?: boolean;
   message?: string;
+}
+
+export interface UserData {
+  id: string;
+  username: string;
+  email: string;
+  profilePicture: string;
+  isAdmin: boolean;
 }

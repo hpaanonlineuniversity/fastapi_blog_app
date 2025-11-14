@@ -1,4 +1,4 @@
-// app/sign-up/page.tsx - FIXED VERSION
+// app/sign-up/page.tsx - UPGRADED CSRF COMPATIBLE VERSION
 'use client';
 
 import { Alert, Button, Label, Spinner, TextInput, Card, Progress, Tooltip } from 'flowbite-react';
@@ -29,6 +29,13 @@ interface PasswordValidation {
 interface AvailabilityCheck {
   email: { available: boolean; checking: boolean; message?: string };
   username: { available: boolean; checking: boolean; message?: string };
+}
+
+interface ApiResponse {
+  success: boolean;
+  message?: string;
+  userId?: string;
+  csrfToken?: string; // ✅ CSRF token for auto-login scenarios
 }
 
 export default function SignUp() {
@@ -78,7 +85,6 @@ export default function SignUp() {
       }));
 
       try {
-        // Use the new dedicated endpoint
         const res = await apiInterceptor.request(`/api/auth/check-email/${encodeURIComponent(email)}`, {
           method: 'GET',
           credentials: 'include'
@@ -98,14 +104,14 @@ export default function SignUp() {
           throw new Error('Failed to check email availability');
         }
       } catch (error) {
-        // If endpoint doesn't exist yet, we'll do basic validation only
+        // If endpoint doesn't exist yet, fallback to basic validation
         console.log('Email check endpoint not available, using basic validation');
         setAvailability(prev => ({
           ...prev,
           email: { available: true, checking: false, message: 'Email format is valid' }
         }));
       }
-    }, 800), // Increased debounce time to reduce API calls
+    }, 800),
     []
   );
 
@@ -150,7 +156,6 @@ export default function SignUp() {
       }));
 
       try {
-        // Use the new dedicated endpoint
         const res = await apiInterceptor.request(`/api/auth/check-username/${encodeURIComponent(username)}`, {
           method: 'GET',
           credentials: 'include'
@@ -170,14 +175,14 @@ export default function SignUp() {
           throw new Error('Failed to check username availability');
         }
       } catch (error) {
-        // If endpoint doesn't exist yet, we'll do basic validation only
+        // If endpoint doesn't exist yet, fallback to basic validation
         console.log('Username check endpoint not available, using basic validation');
         setAvailability(prev => ({
           ...prev,
           username: { available: true, checking: false, message: 'Username format is valid' }
         }));
       }
-    }, 800), // Increased debounce time to reduce API calls
+    }, 800),
     []
   );
 
@@ -209,7 +214,7 @@ export default function SignUp() {
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
     const trimmedValue = value.trim();
-    setFormData({ ...formData, [id]: trimmedValue });
+    setFormData(prev => ({ ...prev, [id]: trimmedValue }));
 
     if (id === 'password') {
       setPasswordValidation(validatePassword(trimmedValue));
@@ -217,6 +222,11 @@ export default function SignUp() {
       checkEmailAvailability(trimmedValue);
     } else if (id === 'username') {
       checkUsernameAvailability(trimmedValue);
+    }
+
+    // Clear error when user starts typing
+    if (errorMessage) {
+      setErrorMessage(null);
     }
   };
 
@@ -251,32 +261,74 @@ export default function SignUp() {
       return setErrorMessage('Please enter a valid email address.');
     }
 
+    // Check availability
+    if (!availability.email.available && availability.email.message?.includes('already exists')) {
+      return setErrorMessage('This email is already registered. Please use a different email.');
+    }
+
+    if (!availability.username.available && availability.username.message?.includes('already exists')) {
+      return setErrorMessage('This username is already taken. Please choose a different username.');
+    }
+
     try {
       setLoading(true);
       setErrorMessage(null);
       
+      // ✅ Use apiInterceptor which will handle CSRF tokens automatically
       const res = await apiInterceptor.request('/api/auth/signup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          // ✅ CSRF token will be automatically added by apiInterceptor if available
+        },
         credentials: 'include',
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          username: formData.username,
+          email: formData.email,
+          password: formData.password
+        }),
       });
       
-      const data = await res.json();
+      const data: ApiResponse = await res.json();
       
       if (res.ok) {
+        console.log('SignUp successful:', data);
+        
+        // ✅ Handle successful signup
+        if (data.csrfToken) {
+          // If backend returns CSRF token (for auto-login scenarios)
+          console.log('CSRF token received during signup:', data.csrfToken);
+          // You can store it in context or state if needed for immediate use
+        }
+        
         setLoading(false);
-        router.push('/sign-in');
+        
+        // ✅ Show success message and redirect to signin
+        setErrorMessage(null);
+        
+        // Use setTimeout to ensure state updates are processed
+        setTimeout(() => {
+          router.push('/sign-in?message=signup_success');
+        }, 100);
+        
       } else {
-        setErrorMessage(data.detail || data.message || 'Signup failed. Please try again.');
+        // ✅ Handle backend validation errors
+        const errorMsg = data.message || data.detail || 'Signup failed. Please try again.';
+        setErrorMessage(errorMsg);
         setLoading(false);
       }
     } catch (error: any) {
-      // Handle specific backend errors
+      console.error('SignUp error:', error);
+      
+      // ✅ Handle specific backend errors with better user messages
       if (error.message?.includes('Email already exists') || error.detail?.includes('Email already exists')) {
-        setErrorMessage('This email is already registered. Please use a different email.');
+        setErrorMessage('This email is already registered. Please use a different email or sign in.');
       } else if (error.message?.includes('Username already exists') || error.detail?.includes('Username already exists')) {
         setErrorMessage('This username is already taken. Please choose a different username.');
+      } else if (error.message?.includes('password') || error.detail?.includes('password')) {
+        setErrorMessage('Password does not meet security requirements. Please follow the password guidelines.');
+      } else if (error.message?.includes('Network') || error.name === 'TypeError') {
+        setErrorMessage('Network error. Please check your connection and try again.');
       } else {
         setErrorMessage(error.message || error.detail || 'Something went wrong. Please try again.');
       }
@@ -351,9 +403,12 @@ export default function SignUp() {
     formData.password && 
     passwordValidation.score === 5 &&
     formData.username.length >= 6 &&
+    formData.username.length <= 40 &&
     formData.username === formData.username.toLowerCase() &&
     /^[a-z0-9]+$/.test(formData.username) &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email);
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) &&
+    availability.email.available !== false && // Not explicitly unavailable
+    availability.username.available !== false; // Not explicitly unavailable
 
   return (
     <div className='min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4'>
@@ -405,9 +460,12 @@ export default function SignUp() {
                   type='text'
                   placeholder='Enter your username (6-40 characters)'
                   id='username'
+                  value={formData.username || ''}
                   onChange={handleChange}
                   required
                   shadow
+                  disabled={loading}
+                  autoComplete='username'
                 />
                 <AvailabilityIndicator type="username" />
               </div>
@@ -419,9 +477,12 @@ export default function SignUp() {
                   type='email'
                   placeholder='name@company.com'
                   id='email'
+                  value={formData.email || ''}
                   onChange={handleChange}
                   required
                   shadow
+                  disabled={loading}
+                  autoComplete='email'
                 />
                 <AvailabilityIndicator type="email" />
               </div>
@@ -440,15 +501,19 @@ export default function SignUp() {
                     type={showPassword ? 'text' : 'password'}
                     placeholder='Create a strong password'
                     id='password'
+                    value={formData.password || ''}
                     onChange={handleChange}
                     required
                     shadow
+                    disabled={loading}
                     className="pr-12"
+                    autoComplete='new-password'
                   />
                   <button
                     type="button"
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 text-sm font-medium"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 text-sm font-medium disabled:opacity-50"
                     onClick={() => setShowPassword(!showPassword)}
+                    disabled={loading}
                   >
                     {showPassword ? 'Hide' : 'Show'}
                   </button>
@@ -491,13 +556,13 @@ export default function SignUp() {
                 color="purple"
                 type='submit'
                 disabled={loading || !isFormValid}
-                className='w-full mt-4 transition-all duration-200 hover:shadow-lg disabled:opacity-50'
+                className='w-full mt-4 transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed'
                 size='lg'
               >
                 {loading ? (
                   <>
-                    <Spinner size='sm' />
-                    <span className='pl-3'>Creating Account...</span>
+                    <Spinner size='sm' className="mr-2" />
+                    <span>Creating Account...</span>
                   </>
                 ) : (
                   'Sign Up'
@@ -521,7 +586,7 @@ export default function SignUp() {
                 Already have an account?{' '}
                 <Link 
                   href='/sign-in'
-                  className='text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 font-medium transition-colors duration-200'
+                  className='text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 font-medium transition-colors duration-200 hover:underline'
                 >
                   Sign In
                 </Link>
@@ -531,7 +596,11 @@ export default function SignUp() {
 
           {/* Error Message */}
           {errorMessage && (
-            <Alert className='mt-4' color='failure'>
+            <Alert 
+              className='mt-4 animate-fade-in' 
+              color='failure'
+              onDismiss={() => setErrorMessage(null)}
+            >
               <span className='font-medium'>Error!</span> {errorMessage}
             </Alert>
           )}

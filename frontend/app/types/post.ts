@@ -29,3 +29,11 @@ export interface PostsResponse {
   success?: boolean;
   message?: string;
 }
+
+export interface CreatePostResponse {
+  success: boolean;
+  message?: string;
+  slug?: string;
+  postId?: string;
+  csrfToken?: string;
+}
