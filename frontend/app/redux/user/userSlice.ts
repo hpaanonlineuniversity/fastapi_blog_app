@@ -19,14 +19,16 @@ interface UserState {
   currentUser: User | null;
   loading: boolean;
   error: string | ApiError | false;
-  csrfToken: string | null; // ✅ CSRF token ကို state ထဲမှာသိမ်းမယ်
+  csrfToken: string | null;
+  csrfTokenExpiry: number | null; // ✅ Add expiry timestamp
 }
 
 const initialState: UserState = {
   currentUser: null,
   loading: false,
   error: false,
-  csrfToken: null, // ✅ initial state
+  csrfToken: null,
+  csrfTokenExpiry: null, // ✅ initial state for expiry
 };
 
 const userSlice = createSlice({
@@ -41,21 +43,38 @@ const userSlice = createSlice({
     },
     signInSuccess: (state, action: PayloadAction<{user: User, csrfToken?: string}>) => {
       state.currentUser = action.payload.user;
-      state.csrfToken = action.payload.csrfToken || null; // ✅ CSRF token သိမ်း
+      state.csrfToken = action.payload.csrfToken || null;
+      // ✅ Set expiry time (15 minutes from now)
+      state.csrfTokenExpiry = action.payload.csrfToken 
+        ? Date.now() + (15 * 60 * 1000)
+        : null;
       state.loading = false;
       state.error = false;
     },
     signInFailure: (state, action: PayloadAction<string | ApiError>) => {
       state.loading = false;
       state.error = action.payload;
-      state.csrfToken = null; // ✅ Error ဖြစ်ရင် clear
+      state.csrfToken = null;
+      state.csrfTokenExpiry = null; // ✅ Clear expiry on error
     },
     setCsrfToken: (state, action: PayloadAction<string>) => {
-      state.csrfToken = action.payload; // ✅ CSRF token သပ်သပ်ထည့်လို့ရ
+      state.csrfToken = action.payload;
+      // ✅ Set expiry time when setting token manually
+      state.csrfTokenExpiry = Date.now() + (15 * 60 * 1000);
     },
     clearCsrfToken: (state) => {
-      state.csrfToken = null; // ✅ CSRF token ဖျက်လို့ရ
+      state.csrfToken = null;
+      state.csrfTokenExpiry = null;
     },
+    // ✅ New action to check and clear expired token
+    checkCsrfTokenExpiry: (state) => {
+      if (state.csrfToken && state.csrfTokenExpiry && Date.now() > state.csrfTokenExpiry) {
+        state.csrfToken = null;
+        state.csrfTokenExpiry = null;
+        console.log('CSRF token expired and cleared');
+      }
+    },
+    // ... other existing actions
     updateUserStart: (state) => {
       state.loading = true;
     },
@@ -73,7 +92,8 @@ const userSlice = createSlice({
     },
     deleteUserSuccess: (state) => {
       state.currentUser = null;
-      state.csrfToken = null; // ✅ User delete လုပ်ရင် CSRF token ပါဖျက်
+      state.csrfToken = null;
+      state.csrfTokenExpiry = null;
       state.loading = false;
       state.error = false;
     },
@@ -83,7 +103,8 @@ const userSlice = createSlice({
     },
     signOut: (state) => {
       state.currentUser = null;
-      state.csrfToken = null; // ✅ Logout လုပ်ရင် CSRF token ပါဖျက်
+      state.csrfToken = null;
+      state.csrfTokenExpiry = null;
       state.loading = false;
       state.error = false;
     },
@@ -102,8 +123,9 @@ export const {
   deleteUserFailure,
   deleteUserStart,
   deleteUserSuccess,
-  setCsrfToken,        // ✅ Export new actions
-  clearCsrfToken,      // ✅ Export new actions
+  setCsrfToken,
+  clearCsrfToken,
+  checkCsrfTokenExpiry, // ✅ Export new action
 } = userSlice.actions;
 
 export default userSlice.reducer;

@@ -146,13 +146,28 @@ async def check_username_availability(username: str):
         "message": "Username already exists" if existing_user else "Username is available"
     }
 
-# ✅ CSRF token related endpoints
 @router.get("/csrf-token")
 async def get_csrf_token_endpoint(
-    current_user: dict = Depends(get_current_user)
+    request: Request
 ):
-    """Get new CSRF token"""
-    return await auth_controller.get_csrf_token(current_user["id"])
+    """Get new CSRF token - Allow public access"""
+    try:
+        # Try to get current user, but don't require authentication
+        from ..utils.auth_dependency import get_current_user_optional
+        current_user = await get_current_user_optional(request)
+        
+        if current_user:
+            # Authenticated user - generate user-specific CSRF token
+            return await auth_controller.get_csrf_token(current_user["id"])
+        else:
+            # Unauthenticated user - generate anonymous CSRF token
+            csrf_token = await csrf_protection.generate_csrf_token()
+            return {"csrfToken": csrf_token}
+            
+    except Exception as e:
+        # Fallback - generate anonymous token
+        csrf_token = await csrf_protection.generate_csrf_token()
+        return {"csrfToken": csrf_token}
 
 @router.post("/verify-csrf")
 async def verify_csrf_token_endpoint(

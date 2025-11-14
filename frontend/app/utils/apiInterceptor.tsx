@@ -1,4 +1,4 @@
-// utils/apiInterceptor.ts
+// utils/apiInterceptor.ts - COMPLETE UPDATED VERSION
 
 interface RequestOptions extends RequestInit {
   headers?: Record<string, string>;
@@ -11,6 +11,33 @@ interface FailedRequest {
   originalOptions: RequestOptions;
 }
 
+// Function to get valid CSRF token from Redux store
+const getValidCsrfToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const store = (window as any).__REDUX_STORE__;
+    if (!store) return null;
+    
+    const state = store.getState();
+    const { csrfToken, csrfTokenExpiry } = state.user;
+    
+    // Check if token exists and hasn't expired (15-minute lifetime)
+    if (csrfToken && csrfTokenExpiry && Date.now() < csrfTokenExpiry) {
+      return csrfToken;
+    }
+    
+    // Token is expired, clear it
+    if (csrfToken && csrfTokenExpiry && Date.now() >= csrfTokenExpiry) {
+      store.dispatch({ type: 'user/clearCsrfToken' });
+    }
+    
+    return null;
+  } catch (error) {
+    return null;
+  }
+};
+
 class ApiInterceptor {
   private isRefreshing: boolean;
   private failedRequests: FailedRequest[];
@@ -21,6 +48,9 @@ class ApiInterceptor {
   }
 
   async request(url: string, options: RequestOptions = {}): Promise<Response> {
+    // Get valid CSRF token (checks expiry automatically)
+    const csrfToken = getValidCsrfToken();
+    
     const config: RequestInit = {
       ...options,
       credentials: 'include' as RequestCredentials,
@@ -30,11 +60,22 @@ class ApiInterceptor {
       },
     };
 
+    // Add CSRF token to headers if available and not an auth endpoint
+    if (csrfToken && !url.includes('/auth/')) {
+      (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
+    }
+
     try {
       const response = await fetch(url, config);
       
-      // ✅ 401 Error - Silent refresh (no console log)
+      // ✅ Handle 401 Error - Silent refresh
       if (response.status === 401 && !url.includes('/auth/')) {
+        return await this.handleTokenRefresh(url, options);
+      }
+
+      // ✅ Handle 403 Error - CSRF token might be invalid/expired
+      if (response.status === 403 && !url.includes('/auth/')) {
+        console.log('CSRF token might be invalid, attempting refresh...');
         return await this.handleTokenRefresh(url, options);
       }
 
@@ -84,10 +125,23 @@ class ApiInterceptor {
       });
 
       if (refreshResponse.ok) {
+        const refreshData = await refreshResponse.json();
+        
+        // ✅ Update CSRF token in Redux store with new 15-minute expiry
+        if (refreshData.csrfToken) {
+          const store = (window as any).__REDUX_STORE__;
+          if (store) {
+            store.dispatch({ 
+              type: 'user/setCsrfToken', 
+              payload: refreshData.csrfToken 
+            });
+          }
+        }
+        
         // ✅ Retry all failed requests silently
         this.retryFailedRequests();
         
-        // ✅ IMPORTANT: Use this.request() instead of fetch()
+        // ✅ Retry the original request with new token
         return await this.request(originalUrl, originalOptions);
       } else {
         // ✅ Silent failure - no console logs
@@ -107,7 +161,7 @@ class ApiInterceptor {
   }
 
   private retryFailedRequests(): void {
-    // ✅ Use this.request() for all retries to avoid console logs
+    // ✅ Use this.request() for all retries to maintain CSRF token handling
     this.failedRequests.forEach(({ resolve, reject, originalUrl, originalOptions }) => {
       this.request(originalUrl, originalOptions)
         .then(resolve)
@@ -117,6 +171,14 @@ class ApiInterceptor {
   }
 
   private handleRefreshFailure(): void {
+    // ✅ Clear expired/invalid CSRF token
+    if (typeof window !== 'undefined') {
+      const store = (window as any).__REDUX_STORE__;
+      if (store) {
+        store.dispatch({ type: 'user/clearCsrfToken' });
+      }
+    }
+    
     // ✅ Silent redirect to login - Check if window exists (client-side)
     if (typeof window !== 'undefined' && window.location.pathname !== '/sign-in') {
       window.location.href = '/sign-in';
@@ -154,6 +216,33 @@ class ApiInterceptor {
       method: 'PATCH', 
       body: data ? JSON.stringify(data) : undefined
     });
+  }
+
+  // ✅ Utility method to check CSRF token status
+  getCsrfTokenStatus(): { isValid: boolean; timeRemaining: number } {
+    const token = getValidCsrfToken();
+    if (!token) {
+      return { isValid: false, timeRemaining: 0 };
+    }
+
+    try {
+      const store = (window as any).__REDUX_STORE__;
+      if (store) {
+        const state = store.getState();
+        const { csrfTokenExpiry } = state.user;
+        if (csrfTokenExpiry) {
+          const timeRemaining = Math.max(0, csrfTokenExpiry - Date.now());
+          return { 
+            isValid: true, 
+            timeRemaining: Math.ceil(timeRemaining / 1000) // Convert to seconds
+          };
+        }
+      }
+    } catch (error) {
+      // Silent error
+    }
+
+    return { isValid: false, timeRemaining: 0 };
   }
 }
 

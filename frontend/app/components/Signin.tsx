@@ -1,4 +1,4 @@
-// app/sign-in/page.tsx - COMPLETE FIXED VERSION
+// app/sign-in/page.tsx - COMPLETE UPDATED VERSION
 'use client';
 
 import { Alert, Button, Label, Spinner, TextInput, Card } from 'flowbite-react';
@@ -15,29 +15,7 @@ import {
 } from '../redux/user/userSlice';
 import { apiInterceptor } from '../utils/apiInterceptor';
 import { SignInFormData } from '../types/form';
-import { UserData , ApiResponse } from '../types/user';
-
-/*
-interface FormData {
-  email: string;
-  password: string;
-}
-  
-interface UserData {
-  id: string;
-  username: string;
-  email: string;
-  profilePicture: string;
-  isAdmin: boolean;
-}
-
-
-interface ApiResponse {
-  success: boolean;
-  message?: string;
-  user?: UserData;
-  csrfToken?: string;
-}*/
+import { UserData, ApiResponse } from '../types/user';
 
 export default function SignIn() {
   const [formData, setFormData] = useState<SignInFormData>({
@@ -91,13 +69,7 @@ export default function SignIn() {
     try {
       dispatch(signInStart());
       
-      const res = await apiInterceptor.request('/api/auth/signin', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
+      const res = await apiInterceptor.post('/api/auth/signin', formData);
       
       const data: ApiResponse = await res.json();
       console.log('SignIn Response:', data);
@@ -115,13 +87,13 @@ export default function SignIn() {
           isAdmin: data.user.isAdmin,
         };
         
-        // ✅ CSRF token ကို Redux state ထဲမှာသိမ်းမယ် (localStorage မဟုတ်ဘူး)
+        // ✅ CSRF token with 15-minute expiry
         if (data.csrfToken) {
           dispatch(setCsrfToken(data.csrfToken));
-          console.log('CSRF token stored in Redux state');
+          console.log('CSRF token stored with 15-minute expiry');
         }
         
-        // ✅ User data နဲ့ CSRF token ကိုတစ်ခါတည်း dispatch လုပ်မယ်
+        // ✅ User data and CSRF token dispatched together
         dispatch(signInSuccess({
           user: userData,
           csrfToken: data.csrfToken

@@ -1,4 +1,4 @@
-// app/create-post/page.tsx - OPTIMIZED VERSION
+// app/create-post/page.tsx - COOKIE & HEADER ONLY CSRF VERSION
 'use client';
 import { 
   Alert, 
@@ -20,6 +20,18 @@ import Image from 'next/image';
 import { FormData } from '../types/form';
 import { CreatePostResponse } from '../types/post';
 
+// ✅ CSRF Token utility function - Cookie Only
+const getCsrfTokenFromCookie = (): string | null => {
+  if (typeof document === 'undefined') return null;
+  
+  const cookieValue = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('csrf_token='))
+    ?.split('=')[1];
+  
+  return cookieValue || null;
+};
+
 export default function CreatePost() {
   const router = useRouter();
   const dispatch = useDispatch();
@@ -30,7 +42,8 @@ export default function CreatePost() {
   const [image, setImage] = useState<File | undefined>(undefined);
   const [localPostImage, setLocalPostImage] = useState<string>('');
   const [publishError, setPublishError] = useState<string | null>(null);
-  const [freshCsrfToken, setFreshCsrfToken] = useState<string | null>(null);
+  const [csrfTokenLoading, setCsrfTokenLoading] = useState<boolean>(true);
+  const [csrfTokenSource, setCsrfTokenSource] = useState<'cookie' | 'redux' | 'api' | 'none'>('none');
   
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -41,52 +54,116 @@ export default function CreatePost() {
     image: ''
   });
 
-  // ✅ OPTIMIZED: Use Redux token first, only fetch if needed
+  // ✅ OPTIMIZED: Cookie & Header Only Approach
   useEffect(() => {
-    let isMounted = true;
-
     const initializeCsrfToken = async () => {
-      if (currentUser) {
-        if (csrfToken) {
-          // ✅ Use existing token from Redux store
-          console.log('✅ Using CSRF token from Redux store');
-          if (isMounted) {
-            setFreshCsrfToken(csrfToken);
+      setCsrfTokenLoading(true);
+      
+      try {
+        console.log('🔄 Initializing CSRF token...');
+        
+        // 1. First Priority: Check Browser Cookie (Most Secure)
+        const cookieToken = getCsrfTokenFromCookie();
+        if (cookieToken) {
+          console.log('✅ CSRF token found in cookie');
+          setCsrfTokenSource('cookie');
+          
+          // Update Redux store with cookie token
+          dispatch({
+            type: 'user/setCsrfToken',
+            payload: cookieToken
+          });
+          setCsrfTokenLoading(false);
+          return;
+        }
+
+        // 3. Final Fallback: Fetch from Backend API
+        console.log('🔄 No CSRF token found, fetching from backend...');
+        setCsrfTokenSource('api');
+        
+        const res = await apiInterceptor.request('/api/auth/csrf-token', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.csrfToken) {
+            console.log('✅ New CSRF token received from backend API');
+            
+            // Update Redux store
+            dispatch({
+              type: 'user/setCsrfToken',
+              payload: data.csrfToken
+            });
+          } else {
+            console.warn('⚠️ Backend returned empty CSRF token');
+            setCsrfTokenSource('none');
           }
         } else {
-          // ✅ Only fetch new token if not available in Redux
-          try {
-            console.log('🔄 Fetching CSRF token (not in store)...');
-            const res = await apiInterceptor.request('/api/auth/csrf-token', {
-              method: 'GET',
-              credentials: 'include',
-            });
-            
-            if (res.ok && isMounted) {
-              const data = await res.json();
-              if (data.csrfToken) {
-                console.log('✅ New CSRF token received:', data.csrfToken);
-                setFreshCsrfToken(data.csrfToken);
-                
-                dispatch({
-                  type: 'user/setCsrfToken',
-                  payload: data.csrfToken
-                });
-              }
-            }
-          } catch (error) {
-            console.error('Error getting CSRF token:', error);
-          }
+          console.error('❌ Failed to fetch CSRF token from backend');
+          setCsrfTokenSource('none');
         }
+      } catch (error) {
+        console.error('❌ Error initializing CSRF token:', error);
+        setCsrfTokenSource('none');
+      } finally {
+        setCsrfTokenLoading(false);
       }
     };
 
-    initializeCsrfToken();
-
-    return () => {
-      isMounted = false;
-    };
+    if (currentUser) {
+      initializeCsrfToken();
+    } else {
+      setCsrfTokenLoading(false);
+      setCsrfTokenSource('none');
+    }
   }, [currentUser, csrfToken, dispatch]);
+
+  // ✅ Get current CSRF token with priority system
+  const getCurrentCsrfToken = (): string | null => {
+    // Priority Order: Cookie → Redux → null
+    const cookieToken = getCsrfTokenFromCookie();
+    if (cookieToken) return cookieToken;
+    
+    if (csrfToken) return csrfToken;
+    
+    return null;
+  };
+
+  // ✅ Refresh CSRF token function
+  const refreshCsrfToken = async (): Promise<string | null> => {
+    try {
+      console.log('🔄 Manually refreshing CSRF token...');
+      
+      const res = await apiInterceptor.request('/api/auth/csrf-token', {
+        method: 'GET',
+        credentials: 'include',
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.csrfToken) {
+          console.log('✅ CSRF token refreshed successfully');
+          
+          // Update Redux store
+          dispatch({
+            type: 'user/setCsrfToken',
+            payload: data.csrfToken
+          });
+          
+          setCsrfTokenSource('api');
+          return data.csrfToken;
+        }
+      }
+      
+      console.error('❌ Failed to refresh CSRF token');
+      return null;
+    } catch (error) {
+      console.error('❌ Error refreshing CSRF token:', error);
+      return null;
+    }
+  };
 
   // ✅ Redirect if not authenticated
   useEffect(() => {
@@ -198,20 +275,36 @@ export default function CreatePost() {
       return;
     }
 
+    // Check if CSRF token is still loading
+    if (csrfTokenLoading) {
+      setPublishError('Security token is still loading. Please wait...');
+      return;
+    }
+
     setLoading(true); 
     setPublishError(null);
 
     console.log('Form Data:', formData);
-    console.log('Redux CSRF Token:', csrfToken);
-    console.log('Fresh CSRF Token:', freshCsrfToken);
-    console.log('User authenticated:', !!currentUser);
     
     try {
-      // ✅ PRIORITY: Use Redux token first, then fresh token as fallback
-      const currentCsrfToken = csrfToken || freshCsrfToken;
+      // ✅ Get token with priority system
+      let currentCsrfToken = getCurrentCsrfToken();
+      
+      console.log('CSRF Token Status:', {
+        source: csrfTokenSource,
+        fromCookie: !!getCsrfTokenFromCookie(),
+        fromRedux: !!csrfToken,
+        finalToken: !!currentCsrfToken
+      });
+      
+      // If no token found, try to refresh
+      if (!currentCsrfToken) {
+        console.log('🔄 No CSRF token found, attempting to refresh...');
+        currentCsrfToken = await refreshCsrfToken();
+      }
       
       if (!currentCsrfToken) {
-        throw new Error('No CSRF token available. Please refresh the page.');
+        throw new Error('No security token available. Please refresh the page and try again.');
       }
 
       const headers: Record<string, string> = {
@@ -219,7 +312,7 @@ export default function CreatePost() {
         'X-CSRF-Token': currentCsrfToken,
       };
 
-      console.log('Making request with CSRF token:', currentCsrfToken);
+      console.log('Making request with CSRF token from source:', csrfTokenSource);
 
       const res = await apiInterceptor.request('/api/post/create', {
         method: 'POST',
@@ -242,8 +335,32 @@ export default function CreatePost() {
       console.log('Create post response:', data);
 
       if (!res.ok) {
+        // Handle CSRF token errors specifically
         if (res.status === 403) {
           if (data.detail?.includes('CSRF')) {
+            // Try to refresh token and retry once
+            console.log('🔄 CSRF token rejected, refreshing and retrying...');
+            const newToken = await refreshCsrfToken();
+            
+            if (newToken) {
+              // Retry the request with new token
+              const retryRes = await apiInterceptor.request('/api/post/create', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-CSRF-Token': newToken,
+                },
+                credentials: 'include',
+                body: JSON.stringify(formData)
+              });
+              
+              if (retryRes.ok) {
+                const retryData = await retryRes.json();
+                await handleSuccess(retryData);
+                return;
+              }
+            }
+            
             setPublishError('Security token error. Please refresh the page and try again.');
           } else {
             setPublishError('You do not have permission to create posts.');
@@ -262,21 +379,8 @@ export default function CreatePost() {
         }
       }
 
-      // Success case
-      setPublishError(null);
-      
-      // Remove image from localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('postImage');
-      }
-      
-      // Redirect to the new post
-      if (data.slug) {
-        console.log('Post created successfully, redirecting to:', `/post/${data.slug}`);
-        router.push(`/post/${data.slug}`);
-      } else {
-        router.push('/');
-      }
+      await handleSuccess(data);
+
     } catch (error: any) {
       console.error('Create post error:', error);
       
@@ -295,13 +399,66 @@ export default function CreatePost() {
     }
   };
 
+  // Handle successful post creation
+  const handleSuccess = async (data: CreatePostResponse) => {
+    setPublishError(null);
+    
+    // Remove image from localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('postImage');
+    }
+    
+    // Redirect to the new post
+    if (data.slug) {
+      console.log('Post created successfully, redirecting to:', `/post/${data.slug}`);
+      router.push(`/post/${data.slug}`);
+    } else {
+      router.push('/');
+    }
+  };
+
+  // Get token source badge color
+  const getTokenSourceColor = () => {
+    switch (csrfTokenSource) {
+      case 'cookie':
+        return 'text-green-600 dark:text-green-400';
+      case 'redux':
+        return 'text-blue-600 dark:text-blue-400';
+      case 'api':
+        return 'text-purple-600 dark:text-purple-400';
+      default:
+        return 'text-red-600 dark:text-red-400';
+    }
+  };
+
+  // Get token source text
+  const getTokenSourceText = () => {
+    switch (csrfTokenSource) {
+      case 'cookie':
+        return 'Secure Cookie Token';
+      case 'redux':
+        return 'Redux Store Token';
+      case 'api':
+        return 'Fresh API Token';
+      default:
+        return 'No Token Available';
+    }
+  };
+
   // Loading state
-  if (userLoading) {
+  if (userLoading || csrfTokenLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <Card className="text-center p-8">
           <Spinner size="xl" className="mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Checking authentication...</p>
+          <p className="text-gray-600 dark:text-gray-400">
+            {csrfTokenLoading ? 'Loading security token...' : 'Checking authentication...'}
+          </p>
+          {csrfTokenLoading && (
+            <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
+              Securing your session...
+            </p>
+          )}
         </Card>
       </div>
     );
@@ -323,6 +480,8 @@ export default function CreatePost() {
     );
   }
 
+  const currentCsrfToken = getCurrentCsrfToken();
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="max-w-4xl mx-auto px-4">
@@ -335,14 +494,13 @@ export default function CreatePost() {
               Share your thoughts and ideas with the world
             </p>
             <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              Posting as: <span className="font-medium text-purple-600 dark:text-purple-400">{currentUser.username}</span>
-              {csrfToken ? (
-                <span className="ml-2 text-green-600 dark:text-green-400">• Security token ready</span>
-              ) : freshCsrfToken ? (
-                <span className="ml-2 text-yellow-600 dark:text-yellow-400">• Using fresh token</span>
-              ) : (
-                <span className="ml-2 text-red-600 dark:text-red-400">• No security token</span>
-              )}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                <span>Posting as: <span className="font-medium text-purple-600 dark:text-purple-400">{currentUser.username}</span></span>
+                <span className="hidden sm:inline">•</span>
+                <span className={getTokenSourceColor()}>
+                  {getTokenSourceText()}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -474,7 +632,7 @@ export default function CreatePost() {
               <Button
                 type="submit"
                 color="purple"
-                disabled={loading}
+                disabled={loading || !currentCsrfToken}
                 className="sm:w-auto w-full"
                 size="lg"
               >
