@@ -147,28 +147,45 @@ async def check_username_availability(username: str):
         "message": "Username already exists" if existing_user else "Username is available"
     }
 
+# ✅ IMPROVED: Prevent duplicate token generation
 @router.get("/csrf-token")
 async def get_csrf_token_endpoint(request: Request):
-    """Get new CSRF token - Allow public access"""
+    """Get new CSRF token with duplicate prevention"""
     try:
-        # Try to get current user, but don't require authentication
+        # Check if client already has a valid CSRF cookie
+        existing_csrf_cookie = request.cookies.get("csrf_token")
         current_user = await get_current_user_optional(request)
         
-        if current_user:
-            # Authenticated user - generate user-specific CSRF token
-            csrf_token = await csrf_protection.generate_csrf_token(current_user["id"])
-            return {"csrfToken": csrf_token}
+        user_id = current_user["id"] if current_user else None
+        
+        # If user has existing CSRF cookie, verify it first
+        if existing_csrf_cookie and user_id:
+            is_valid = await csrf_protection.verify_csrf_token(existing_csrf_cookie, user_id)
+            if is_valid:
+                print(f"✅ Client already has valid CSRF token, returning existing one")
+                return {"csrfToken": existing_csrf_cookie}
+        
+        # ✅ IMPORTANT: Revoke old tokens before generating new one
+        if user_id:
+            await csrf_protection.revoke_user_csrf_tokens(user_id)
+            print(f"🔄 Revoked old CSRF tokens for user: {user_id}")
+        
+        # Generate new token
+        if user_id:
+            csrf_token = await csrf_protection.generate_csrf_token(user_id)
+            print(f"✅ Generated NEW CSRF token for user: {user_id}")
         else:
-            # Unauthenticated user - generate anonymous CSRF token
             csrf_token = await csrf_protection.generate_csrf_token()
-            return {"csrfToken": csrf_token}
+            print(f"✅ Generated NEW anonymous CSRF token")
             
+        return {"csrfToken": csrf_token}
+        
     except Exception as e:
-        print(f"❌ Error generating CSRF token: {e}")
-        # Fallback - generate anonymous token
+        print(f"❌ Error in CSRF token endpoint: {e}")
+        # Fallback
         csrf_token = await csrf_protection.generate_csrf_token()
         return {"csrfToken": csrf_token}
-
+    
 @router.post("/verify-csrf")
 async def verify_csrf_token_endpoint(
     current_user: dict = Depends(verify_csrf_token)  # ✅ This will verify CSRF token

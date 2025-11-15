@@ -54,31 +54,31 @@ export default function CreatePost() {
     image: ''
   });
 
-  // ✅ OPTIMIZED: Cookie & Header Only Approach
+    // ✅ FIXED: Prevent duplicate API calls
   useEffect(() => {
     const initializeCsrfToken = async () => {
+      console.log('🔄 Starting CSRF token initialization...');
       setCsrfTokenLoading(true);
       
       try {
-        console.log('🔄 Initializing CSRF token...');
-        
-        // 1. First Priority: Check Browser Cookie (Most Secure)
+        // 1. First Priority: Check Browser Cookie
         const cookieToken = getCsrfTokenFromCookie();
         if (cookieToken) {
           console.log('✅ CSRF token found in cookie');
           setCsrfTokenSource('cookie');
-          
-          // Update Redux store with cookie token
-          dispatch({
-            type: 'user/setCsrfToken',
-            payload: cookieToken
-          });
-          setCsrfTokenLoading(false);
+          dispatch({ type: 'user/setCsrfToken', payload: cookieToken });
           return;
         }
 
-        // 3. Final Fallback: Fetch from Backend API
-        console.log('🔄 No CSRF token found, fetching from backend...');
+        // 2. Check Redux store
+        if (csrfToken) {
+          console.log('✅ CSRF token found in Redux');
+          setCsrfTokenSource('redux');
+          return;
+        }
+
+        // 3. Final Fallback: Fetch from API (ONLY IF ABSOLUTELY NEEDED)
+        console.log('🔄 No CSRF token available, fetching from backend...');
         setCsrfTokenSource('api');
         
         const res = await apiInterceptor.request('/api/auth/csrf-token', {
@@ -89,36 +89,34 @@ export default function CreatePost() {
         if (res.ok) {
           const data = await res.json();
           if (data.csrfToken) {
-            console.log('✅ New CSRF token received from backend API');
-            
-            // Update Redux store
-            dispatch({
-              type: 'user/setCsrfToken',
-              payload: data.csrfToken
-            });
-          } else {
-            console.warn('⚠️ Backend returned empty CSRF token');
-            setCsrfTokenSource('none');
+            console.log('✅ New CSRF token received from API');
+            dispatch({ type: 'user/setCsrfToken', payload: data.csrfToken });
           }
-        } else {
-          console.error('❌ Failed to fetch CSRF token from backend');
-          setCsrfTokenSource('none');
         }
       } catch (error) {
-        console.error('❌ Error initializing CSRF token:', error);
+        console.error('❌ CSRF token error:', error);
         setCsrfTokenSource('none');
       } finally {
         setCsrfTokenLoading(false);
+        console.log('🏁 CSRF initialization done');
       }
     };
 
-    if (currentUser) {
-      initializeCsrfToken();
+    // Only initialize when user is authenticated and we don't have a token
+    if (currentUser && !userLoading) {
+      const existingToken = getCsrfTokenFromCookie() || csrfToken;
+      if (!existingToken) {
+        console.log('👤 User authenticated but no CSRF token, initializing...');
+        initializeCsrfToken();
+      } else {
+        console.log('✅ User already has CSRF token, skipping initialization');
+        setCsrfTokenLoading(false);
+        setCsrfTokenSource(existingToken === getCsrfTokenFromCookie() ? 'cookie' : 'redux');
+      }
     } else {
       setCsrfTokenLoading(false);
-      setCsrfTokenSource('none');
     }
-  }, [currentUser, csrfToken, dispatch]);
+  }, [currentUser, userLoading, dispatch, csrfToken]); // ✅ Add csrfToken to dependencies
 
   // ✅ Get current CSRF token with priority system
   const getCurrentCsrfToken = (): string | null => {
@@ -131,8 +129,16 @@ export default function CreatePost() {
     return null;
   };
 
-  // ✅ Refresh CSRF token function
+
+  // ✅ IMPROVED: Refresh function that doesn't create duplicates
   const refreshCsrfToken = async (): Promise<string | null> => {
+    // Don't refresh if already has valid token
+    const existingToken = getCurrentCsrfToken();
+    if (existingToken) {
+      console.log('✅ Using existing CSRF token');
+      return existingToken;
+    }
+
     try {
       console.log('🔄 Manually refreshing CSRF token...');
       
@@ -145,19 +151,11 @@ export default function CreatePost() {
         const data = await res.json();
         if (data.csrfToken) {
           console.log('✅ CSRF token refreshed successfully');
-          
-          // Update Redux store
-          dispatch({
-            type: 'user/setCsrfToken',
-            payload: data.csrfToken
-          });
-          
+          dispatch({ type: 'user/setCsrfToken', payload: data.csrfToken });
           setCsrfTokenSource('api');
           return data.csrfToken;
         }
       }
-      
-      console.error('❌ Failed to refresh CSRF token');
       return null;
     } catch (error) {
       console.error('❌ Error refreshing CSRF token:', error);

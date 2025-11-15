@@ -71,7 +71,7 @@ export default function DashPosts() {
     return () => {
       isMounted = false;
     };
-  }, [currentUser, csrfToken]);
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser?.id) {
