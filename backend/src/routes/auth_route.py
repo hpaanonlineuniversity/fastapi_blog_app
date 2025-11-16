@@ -147,9 +147,8 @@ async def check_username_availability(username: str):
         "message": "Username already exists" if existing_user else "Username is available"
     }
 
-# ✅ IMPROVED: Prevent duplicate token generation
 @router.get("/csrf-token")
-async def get_csrf_token_endpoint(request: Request):
+async def get_csrf_token_endpoint(request: Request, response: Response):  # ✅ Response parameter ထည့်ပါ
     """Get new CSRF token with duplicate prevention"""
     try:
         # Check if client already has a valid CSRF cookie
@@ -163,6 +162,17 @@ async def get_csrf_token_endpoint(request: Request):
             is_valid = await csrf_protection.verify_csrf_token(existing_csrf_cookie, user_id)
             if is_valid:
                 print(f"✅ Client already has valid CSRF token, returning existing one")
+                
+                # ✅ SET COOKIE for existing valid token too
+                response.set_cookie(
+                    key="csrf_token",
+                    value=existing_csrf_cookie,
+                    httponly=True,  # ✅ XSS protection
+                    secure=True,    # ✅ HTTPS only (production)
+                    samesite="lax", # ✅ CSRF protection
+                    max_age=1*60    #1 min for testing
+                )
+                
                 return {"csrfToken": existing_csrf_cookie}
         
         # ✅ IMPORTANT: Revoke old tokens before generating new one
@@ -177,13 +187,37 @@ async def get_csrf_token_endpoint(request: Request):
         else:
             csrf_token = await csrf_protection.generate_csrf_token()
             print(f"✅ Generated NEW anonymous CSRF token")
+        
+        # ✅ SET CSRF TOKEN COOKIE
+        response.set_cookie(
+            key="csrf_token",
+            value=csrf_token,
+            httponly=True,      # ✅ Prevent XSS attacks
+            secure=True,        # ✅ HTTPS only in production
+            samesite="lax",     # ✅ CSRF protection
+            max_age=1*60,       # ✅ 1 min for testing
+            path="/"            # ✅ Available for all routes
+        )
+        
+        print(f"🍪 CSRF token set in cookie for user: {user_id or 'anonymous'}")
             
         return {"csrfToken": csrf_token}
         
     except Exception as e:
         print(f"❌ Error in CSRF token endpoint: {e}")
-        # Fallback
+        # Fallback - generate basic token but still set cookie
         csrf_token = await csrf_protection.generate_csrf_token()
+        
+        # ✅ SET COOKIE even in error case
+        response.set_cookie(
+            key="csrf_token",
+            value=csrf_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=3600
+        )
+        
         return {"csrfToken": csrf_token}
     
 @router.post("/verify-csrf")
