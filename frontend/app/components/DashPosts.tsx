@@ -31,37 +31,29 @@ export default function DashPosts() {
   const [freshCsrfToken, setFreshCsrfToken] = useState<string | null>(null);
   const router = useRouter();
 
-  // ✅ CSRF Token Initialization
+  // ✅ SIMPLIFIED: Only fetch CSRF token if needed for DELETE
   useEffect(() => {
     let isMounted = true;
 
     const initializeCsrfToken = async () => {
-      if (currentUser) {
-        if (csrfToken) {
-          // ✅ Use existing token from Redux store
-          console.log('✅ Using CSRF token from Redux store for DashPosts');
-          if (isMounted) {
-            setFreshCsrfToken(csrfToken);
-          }
-        } else {
-          // ✅ Only fetch new token if not available in Redux
-          try {
-            console.log('🔄 Fetching CSRF token for DashPosts...');
-            const res = await apiInterceptor.request('/api/auth/csrf-token', {
-              method: 'GET',
-              credentials: 'include',
-            });
-            
-            if (res.ok && isMounted) {
-              const data = await res.json();
-              if (data.csrfToken) {
-                console.log('✅ New CSRF token received for DashPosts:', data.csrfToken);
-                setFreshCsrfToken(data.csrfToken);
-              }
+      // Only fetch if we don't have token in Redux and we have a user
+      if (currentUser && !csrfToken) {
+        try {
+          console.log('🔄 Fetching CSRF token for DashPosts...');
+          const res = await apiInterceptor.request('/api/auth/csrf-token', {
+            method: 'GET',
+            credentials: 'include',
+          });
+          
+          if (res.ok && isMounted) {
+            const data = await res.json();
+            if (data.csrfToken) {
+              console.log('✅ New CSRF token received for DashPosts');
+              setFreshCsrfToken(data.csrfToken);
             }
-          } catch (error) {
-            console.error('Error getting CSRF token for DashPosts:', error);
           }
+        } catch (error) {
+          console.error('Error getting CSRF token for DashPosts:', error);
         }
       }
     };
@@ -71,7 +63,7 @@ export default function DashPosts() {
     return () => {
       isMounted = false;
     };
-  }, [currentUser]);
+  }, [currentUser, csrfToken]);
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -83,14 +75,6 @@ export default function DashPosts() {
     try {
       setError('');
       setLoading(true);
-      
-      // ✅ Add CSRF token to request headers
-      const headers: Record<string, string> = {};
-      const currentCsrfToken = csrfToken || freshCsrfToken;
-      
-      if (currentCsrfToken) {
-        headers['X-CSRF-Token'] = currentCsrfToken;
-      }
 
       const searchParams = new URLSearchParams({
         userId: currentUser.id,
@@ -100,19 +84,15 @@ export default function DashPosts() {
         ...(filterCategory && { category: filterCategory }),
       });
 
+      // ✅ GET request doesn't need CSRF token
       const res = await apiInterceptor.request(`/api/post/getposts?${searchParams}`, {
         method: 'GET',
-        headers,
         credentials: 'include'
       });
       
       const data = await res.json();
 
       if (!res.ok) {
-        // Handle CSRF token errors
-        if (res.status === 403 && data.detail?.includes('CSRF')) {
-          throw new Error('Security token error. Please refresh the page.');
-        }
         throw new Error(data.message || 'Failed to fetch posts');
       }
 
@@ -126,33 +106,8 @@ export default function DashPosts() {
     } catch (error) {
       setError((error as Error).message);
       console.error('Error fetching posts:', error);
-      
-      // If it's a CSRF error, try to refresh the token
-      if ((error as Error).message.includes('CSRF') || (error as Error).message.includes('token')) {
-        await refreshCsrfToken();
-      }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const refreshCsrfToken = async () => {
-    try {
-      console.log('🔄 Attempting to refresh CSRF token...');
-      const res = await apiInterceptor.request('/api/auth/csrf-token', {
-        method: 'GET',
-        credentials: 'include',
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        if (data.csrfToken) {
-          setFreshCsrfToken(data.csrfToken);
-          console.log('✅ CSRF token refreshed successfully');
-        }
-      }
-    } catch (tokenError) {
-      console.error('Error refreshing CSRF token:', tokenError);
     }
   };
 
@@ -166,7 +121,7 @@ export default function DashPosts() {
       setError('');
       setDeleteLoading(true);
       
-      // ✅ Use CSRF token for DELETE request
+      // ✅ FIXED: Get current CSRF token (from Redux or fresh)
       const currentCsrfToken = csrfToken || freshCsrfToken;
       
       if (!currentCsrfToken) {
@@ -177,7 +132,7 @@ export default function DashPosts() {
         'X-CSRF-Token': currentCsrfToken,
       };
 
-      console.log('🔄 Deleting post with CSRF token');
+      console.log('🔄 Deleting post with CSRF token:', currentCsrfToken ? 'Available' : 'Missing');
 
       const res = await apiInterceptor.request(`/api/post/deletepost/${postIdToDelete}/${currentUser.id}`, {
         method: 'DELETE',
@@ -188,7 +143,6 @@ export default function DashPosts() {
       const data = await res.json();
 
       if (!res.ok) {
-        // Handle CSRF token errors specifically
         if (res.status === 403 && data.detail?.includes('CSRF')) {
           throw new Error('Security token error. Please refresh the page and try again.');
         }
@@ -201,11 +155,6 @@ export default function DashPosts() {
     } catch (error) {
       setError((error as Error).message);
       console.error('Error deleting post:', error);
-      
-      // If it's a CSRF error, refresh the token
-      if ((error as Error).message.includes('CSRF') || (error as Error).message.includes('token')) {
-        await refreshCsrfToken();
-      }
     } finally {
       setDeleteLoading(false);
     }
@@ -245,15 +194,9 @@ export default function DashPosts() {
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             Manage and track your blog posts
           </p>
+          {/* Optional: Show security status */}
           <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Security Status: 
-            {csrfToken ? (
-              <span className="ml-2 text-green-600 dark:text-green-400">• Protected</span>
-            ) : freshCsrfToken ? (
-              <span className="ml-2 text-yellow-600 dark:text-yellow-400">• Using fresh token</span>
-            ) : (
-              <span className="ml-2 text-red-600 dark:text-red-400">• No security token</span>
-            )}
+            Security: {csrfToken || freshCsrfToken ? '✅ Protected' : '⚠️ No Token'}
           </div>
         </div>
         <Link
@@ -316,7 +259,7 @@ export default function DashPosts() {
         </Alert>
       )}
 
-      {/* Posts Table - Custom Implementation */}
+      {/* Posts Table */}
       {userPosts.length > 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="overflow-x-auto">
@@ -456,7 +399,6 @@ export default function DashPosts() {
       )}
 
       <div className="p-6 mx-auto">
-        {/* Modal component */}
         <DeleteConfirmationModal
           show={showModal}
           onClose={() => setShowModal(false)}
