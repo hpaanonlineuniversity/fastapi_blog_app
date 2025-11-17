@@ -61,6 +61,7 @@ class ApiInterceptor {
     };
 
     // Add CSRF token to headers if available and not an auth endpoint
+    // Auth endpoints (/auth/ ပါတဲ့ url တွေ) မှာ CSRF token မထည့်ဘူး
     if (csrfToken && !url.includes('/auth/')) {
       (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
     }
@@ -69,6 +70,8 @@ class ApiInterceptor {
       const response = await fetch(url, config);
       
       // ✅ Handle 401 Error - Silent refresh
+      // Access token သက်တမ်းကုန်သွားတဲ့အခါ
+
       if (response.status === 401 && !url.includes('/auth/')) {
         return await this.handleTokenRefresh(url, options);
       }
