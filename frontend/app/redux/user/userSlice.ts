@@ -46,7 +46,7 @@ const userSlice = createSlice({
       state.csrfToken = action.payload.csrfToken || null;
       // ✅ Set expiry time (15 minutes from now)
       state.csrfTokenExpiry = action.payload.csrfToken 
-        ? Date.now() + (15 * 60 * 1000)
+        ? Date.now() + (1 * 60 * 1000)
         : null;
       state.loading = false;
       state.error = false;

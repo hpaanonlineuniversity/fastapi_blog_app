@@ -14,12 +14,6 @@ export interface UserState {
   error: string | null;
 }
 
-export interface UserState {
-  currentUser: User | null;
-  loading: boolean;
-  error: string | null;
-}
-
 export interface UpdateUserPayload {
   id: string;
   username?: string;
