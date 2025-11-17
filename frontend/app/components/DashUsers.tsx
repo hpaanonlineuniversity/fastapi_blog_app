@@ -61,7 +61,7 @@ export default function DashUsers() {
   const handleDeleteUser = async () => {
     try {
       setDeleting(true);
-      const res = await apiInterceptor.request(`/api/user/delete/${userIdToDelete}`, {
+      const res = await apiInterceptor.delete(`/api/user/admin/delete/${userIdToDelete}`, {
         credentials: 'include',
         method: 'DELETE',
       });

@@ -21,13 +21,33 @@ async def update_user(
     """Update user profile"""
     return await user_controller.update_user(user_id, update_data, current_user)
 
+# routes/user_route.py
+
 @router.delete("/delete/{user_id}")
+async def delete_own_account(
+    user_id: str,
+    request: Request,
+    current_user: dict = Depends(verify_csrf_token)
+):
+    """User ကိုယ်တိုင် ကိုယ့် account ကို delete လုပ်ခြင်း"""
+    return await user_controller.delete_own_account(user_id, current_user, request)
+
+@router.delete("/admin/delete/{user_id}")
+async def admin_delete_user(
+    user_id: str, 
+    current_user: dict = Depends(verify_csrf_token)
+):
+    """Admin က တခြား user ကို delete လုပ်ခြင်း"""
+    return await user_controller.admin_delete_user(user_id, current_user)
+
+# Legacy route for backward compatibility
+@router.delete("/legacy-delete/{user_id}")
 async def delete_user(
     user_id: str,
     request: Request,
-    current_user: dict = Depends(verify_csrf_token)  # ✅ CSRF protection
+    current_user: dict = Depends(verify_csrf_token)
 ):
-    """Delete user"""
+    """Legacy delete endpoint - maintains backward compatibility"""
     return await user_controller.delete_user(user_id, current_user, request)
 
 @router.get("/getusers", response_model=UsersResponse)

@@ -11,6 +11,7 @@ from ..utils.security import (
     revoke_refresh_token,
     blacklist_token
 )
+from ..utils.csrf_security import csrf_protection
 
 class UserController:
     def __init__(self):
@@ -32,7 +33,6 @@ class UserController:
         update_dict = {}
 
     
-        """Update user with password policy validation"""
         # If password is being updated, validate it
         if update_data.password:
             password_validation = PasswordPolicy.validate_password(update_data.password)
@@ -94,29 +94,29 @@ class UserController:
             profilePicture=updated_user.get("profilePicture"),
             isAdmin=updated_user.get("isAdmin", False)
         )
-
-    async def delete_user(self, user_id: str, current_user: dict, request: Request = None):
-        """Delete user"""
-        # Check permissions
-        if not current_user["isAdmin"] and current_user["id"] != user_id:
+    
+    async def delete_own_account(self, user_id: str, current_user: dict, request: Request = None):
+        """User ကိုယ်တိုင် account delete လုပ်ခြင်း"""
+        # Check if user is deleting their own account
+        if current_user["id"] != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not allowed to delete this user"
+                detail="You can only delete your own account"
             )
         
         try:
-            # Step 1: Revoke refresh token from Redis (ဒါက အရေးကြီးဆုံး)
+            # Step 1: Revoke refresh token from Redis
             await revoke_refresh_token(user_id)
             print(f"✅ Revoked refresh tokens for user: {user_id}")
 
-            # Step 2: Try to blacklist tokens if request is available
+            # Step 2: Blacklist user's tokens (ကိုယ်တိုင်ဖြစ်လို့ blacklist လုပ်မယ်)
             if request:
                 access_token = request.cookies.get("access_token")
                 refresh_token = request.cookies.get("refresh_token")
                 
                 print(f"🔍 Token extraction - Access: {access_token is not None}, Refresh: {refresh_token is not None}")
                 
-                # Blacklist access token
+                # Blacklist access token (ကိုယ့် token ကိုယ် blacklist)
                 if access_token and access_token != "None":
                     try:
                         print(f"🔍 Blacklisting access token: {access_token[:20]}...")
@@ -125,7 +125,7 @@ class UserController:
                     except Exception as e:
                         print(f"⚠️ Access token blacklist warning: {e}")
                 
-                # Blacklist refresh token
+                # Blacklist refresh token (ကိုယ့် token ကိုယ် blacklist)
                 if refresh_token and refresh_token != "None":
                     try:
                         print(f"🔍 Blacklisting refresh token: {refresh_token[:20]}...")
@@ -144,12 +144,66 @@ class UserController:
                     detail="User not found"
                 )
             
-            print(f"✅ User {user_id} successfully deleted")
-            return {"message": "User has been deleted"}
+            print(f"✅ User {user_id} successfully deleted their own account")
+            return {"message": "Your account has been deleted successfully"}
         
         except Exception as e:
-            print(f"❌ Error in delete_user: {e}")
+            print(f"❌ Error in delete_own_account: {e}")
             raise
+
+    async def admin_delete_user(self, user_id: str, current_user: dict):
+        """Admin က တခြား user ကို delete လုပ်ခြင်း"""
+        # Check permissions - Admin ပဲဖြစ်ရမယ်
+        if not current_user["isAdmin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin privileges required"
+            )
+        
+        # Prevent admin from deleting themselves via this route
+        if current_user["id"] == user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admins cannot delete themselves using this route. Use your profile page instead."
+            )
+        
+        try:
+            # Step 1: Revoke refresh token of the target user from Redis
+            await revoke_refresh_token(user_id)
+            print(f"✅ Admin revoked refresh tokens for user: {user_id}")
+
+            # Step 2: Revoke CSRF tokens of the target user
+            await csrf_protection.revoke_user_csrf_tokens(user_id)
+            print(f"✅ Admin revoked CSRF tokens for user: {user_id}")
+
+            # ❌ IMPORTANT: Admin token တွေကို blacklist မလုပ်ဘူး
+            # Admin က delete လုပ်ပြီးတဲ့အခါ ဆက်သုံးလို့ရအောင်
+
+            # Step 3: Delete user from database
+            success = await self.user_model.delete_user(user_id)
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            
+            print(f"✅ Admin {current_user['id']} successfully deleted user {user_id}")
+            return {"message": f"User {user_id} has been deleted by admin"}
+        
+        except Exception as e:
+            print(f"❌ Error in admin_delete_user: {e}")
+            raise                   
+
+    # Helper method for existing code compatibility
+    async def delete_user(self, user_id: str, current_user: dict, request: Request = None):
+        """Legacy method - redirects to appropriate function"""
+        if current_user["isAdmin"] and current_user["id"] != user_id:
+            # Admin deleting another user
+            return await self.admin_delete_user(user_id, current_user)
+        else:
+            # User deleting themselves or non-admin trying to delete others
+            return await self.delete_own_account(user_id, current_user, request)
+
 
     async def get_users(self, current_user: dict, start_index: int = 0, limit: int = 9, sort: str = "desc"):
         """Get all users (admin only)"""
