@@ -18,7 +18,7 @@ import { Post } from '../types/post';
 import { RootState } from '../types/redux';
 
 export default function DashPosts() {
-  const { currentUser, csrfToken } = useSelector((state: RootState) => state.user);
+  const { currentUser } = useSelector((state: RootState) => state.user);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [showMore, setShowMore] = useState<boolean>(true);
   const [showModal, setShowModal] = useState<boolean>(false);
@@ -28,42 +28,7 @@ export default function DashPosts() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
-  const [freshCsrfToken, setFreshCsrfToken] = useState<string | null>(null);
   const router = useRouter();
-
-  // ✅ SIMPLIFIED: Only fetch CSRF token if needed for DELETE
-  useEffect(() => {
-    let isMounted = true;
-
-    const initializeCsrfToken = async () => {
-      // Only fetch if we don't have token in Redux and we have a user
-      if (currentUser && !csrfToken) {
-        try {
-          console.log('🔄 Fetching CSRF token for DashPosts...');
-          const res = await apiInterceptor.request('/api/auth/csrf-token', {
-            method: 'GET',
-            credentials: 'include',
-          });
-          
-          if (res.ok && isMounted) {
-            const data = await res.json();
-            if (data.csrfToken) {
-              console.log('✅ New CSRF token received for DashPosts');
-              setFreshCsrfToken(data.csrfToken);
-            }
-          }
-        } catch (error) {
-          console.error('Error getting CSRF token for DashPosts:', error);
-        }
-      }
-    };
-
-    initializeCsrfToken();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [currentUser, csrfToken]);
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -84,7 +49,7 @@ export default function DashPosts() {
         ...(filterCategory && { category: filterCategory }),
       });
 
-      // ✅ GET request doesn't need CSRF token
+      // ✅ SIMPLIFIED: Just use apiInterceptor - no manual CSRF handling needed
       const res = await apiInterceptor.request(`/api/post/getposts?${searchParams}`, {
         method: 'GET',
         credentials: 'include'
@@ -121,31 +86,19 @@ export default function DashPosts() {
       setError('');
       setDeleteLoading(true);
       
-      // ✅ FIXED: Get current CSRF token (from Redux or fresh)
-      const currentCsrfToken = csrfToken || freshCsrfToken;
-      
-      if (!currentCsrfToken) {
-        throw new Error('Security token not available. Please refresh the page.');
-      }
-
-      const headers = {
-        'X-CSRF-Token': currentCsrfToken,
-      };
-
-      console.log('🔄 Deleting post with CSRF token:', currentCsrfToken ? 'Available' : 'Missing');
+      // ✅ SIMPLIFIED: No manual CSRF token handling - apiInterceptor does it automatically
+      console.log('🔄 Deleting post with automatic CSRF protection...');
 
       const res = await apiInterceptor.request(`/api/post/deletepost/${postIdToDelete}/${currentUser.id}`, {
         method: 'DELETE',
-        headers,
         credentials: 'include'
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        if (res.status === 403 && data.detail?.includes('CSRF')) {
-          throw new Error('Security token error. Please refresh the page and try again.');
-        }
+        // ✅ API Interceptor already handled CSRF token refresh automatically
+        // If we reach here, it's a business logic error
         throw new Error(data.message || 'Failed to delete post');
       }
 
@@ -194,9 +147,9 @@ export default function DashPosts() {
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             Manage and track your blog posts
           </p>
-          {/* Optional: Show security status */}
+          {/* Security status - now handled automatically */}
           <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Security: {csrfToken || freshCsrfToken ? '✅ Protected' : '⚠️ No Token'}
+            Security: ✅ Auto-Protected
           </div>
         </div>
         <Link
